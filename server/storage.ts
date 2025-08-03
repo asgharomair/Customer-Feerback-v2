@@ -203,9 +203,22 @@ export class DatabaseStorage implements IStorage {
     return qrCode;
   }
 
-  async createQrCode(qrCode: InsertQrCode): Promise<QrCode> {
-    const [newQrCode] = await db.insert(qrCodes).values(qrCode).returning();
-    return newQrCode;
+  async createQrCode(qrCodeData: any): Promise<QrCode> {
+    console.log('Creating QR code with data:', qrCodeData);
+    
+    // Ensure required fields are present
+    const qrData = {
+      tenantId: qrCodeData.tenantId,
+      locationId: qrCodeData.locationId,
+      identifier: qrCodeData.identifier,
+      section: qrCodeData.section || "Main",
+      qrData: qrCodeData.qrData || qrCodeData.url, // Use either qrData or url field
+      url: qrCodeData.url || qrCodeData.qrData,
+    };
+    
+    const [qrCode] = await db.insert(qrCodes).values(qrData).returning();
+    console.log('QR code created successfully:', qrCode.id);
+    return qrCode;
   }
 
   async updateQrCode(id: string, qrCode: Partial<InsertQrCode>): Promise<QrCode> {

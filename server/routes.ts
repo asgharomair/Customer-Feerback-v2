@@ -168,7 +168,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/qr-codes', async (req, res) => {
     try {
-      const qrCode = await storage.createQrCode(req.body);
+      // Generate QR data URL for feedback form
+      const qrData = `${req.protocol}://${req.get('host')}/feedback?t=${req.body.tenantId}&l=${req.body.locationId}&q=${req.body.identifier}`;
+      
+      const qrCodeData = {
+        ...req.body,
+        qrData: qrData,
+        url: qrData
+      };
+      
+      const qrCode = await storage.createQrCode(qrCodeData);
       res.json(qrCode);
     } catch (error) {
       console.error('Error creating QR code:', error);
