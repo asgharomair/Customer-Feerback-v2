@@ -28,7 +28,7 @@ type QRCodeFormData = z.infer<typeof qrCodeSchema>;
 
 export default function QRCodeManagement() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<string>("");
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -42,12 +42,12 @@ export default function QRCodeManagement() {
   });
 
   // Fetch locations for the tenant
-  const { data: locations, isLoading: locationsLoading } = useQuery({
+  const { data: locations = [], isLoading: locationsLoading } = useQuery({
     queryKey: ['/api/locations', DEMO_TENANT_ID],
   });
 
   // Fetch QR codes
-  const { data: qrCodes, isLoading: qrCodesLoading } = useQuery({
+  const { data: qrCodes = [], isLoading: qrCodesLoading } = useQuery({
     queryKey: ['/api/qr-codes', DEMO_TENANT_ID],
     refetchInterval: 60000, // Refresh every minute for updated analytics
   });
@@ -111,7 +111,7 @@ export default function QRCodeManagement() {
     return location?.name || "Unknown Location";
   };
 
-  const filteredQrCodes = selectedLocation 
+  const filteredQrCodes = selectedLocation && selectedLocation !== "all"
     ? qrCodes?.filter((qr: any) => qr.locationId === selectedLocation)
     : qrCodes;
 
@@ -268,7 +268,7 @@ export default function QRCodeManagement() {
                 <SelectValue placeholder="All Locations" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Locations</SelectItem>
+                <SelectItem value="all">All Locations</SelectItem>
                 {locations?.map((location: any) => (
                   <SelectItem key={location.id} value={location.id}>
                     {location.name}
