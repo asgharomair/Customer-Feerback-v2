@@ -25,15 +25,59 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Tenants (Business organizations)
+// Tenants (Business organizations) - Comprehensive company onboarding
 export const tenants = pgTable("tenants", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyName: varchar("company_name", { length: 255 }).notNull(),
-  industry: varchar("industry", { length: 100 }).notNull(),
-  contactEmail: varchar("contact_email", { length: 255 }).notNull(),
-  contactPhone: varchar("contact_phone", { length: 50 }),
-  website: varchar("website", { length: 255 }),
-  logo: varchar("logo", { length: 500 }),
+  
+  // Legal and business details
+  legalName: varchar("legal_name", { length: 255 }).notNull(),
+  brandName: varchar("brand_name", { length: 255 }).notNull(),
+  slogan: varchar("slogan", { length: 255 }),
+  industry: varchar("industry", { length: 100 }).notNull(), // Selected from dropdown
+  businessNature: text("business_nature"), // Detailed description
+  
+  // Primary contact information
+  primaryContactName: varchar("primary_contact_name", { length: 255 }).notNull(),
+  primaryContactEmail: varchar("primary_contact_email", { length: 255 }).notNull(),
+  primaryContactPhone: varchar("primary_contact_phone", { length: 50 }),
+  primaryContactPosition: varchar("primary_contact_position", { length: 100 }),
+  
+  // Business address
+  businessAddress: text("business_address"),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  postalCode: varchar("postal_code", { length: 20 }),
+  
+  // Digital presence
+  websiteUrl: varchar("website_url", { length: 255 }),
+  socialMediaLinks: jsonb("social_media_links").$type<{
+    facebook?: string;
+    twitter?: string;
+    instagram?: string;
+    linkedin?: string;
+    youtube?: string;
+    tiktok?: string;
+  }>(),
+  
+  // Branding
+  logoUrl: varchar("logo_url", { length: 500 }),
+  brandColors: jsonb("brand_colors").$type<{
+    background1: string;
+    background2: string;
+    text1: string;
+    text2: string;
+    primary: string;
+    secondary: string;
+  }>(),
+  
+  // Access management
+  authorizedEmails: text("authorized_emails").array(),
+  
+  // System fields
+  subscription: varchar("subscription", { length: 50 }).default("free"),
+  isActive: boolean("is_active").default(true),
+  onboardingCompleted: boolean("onboarding_completed").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

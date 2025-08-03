@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import MobileFeedbackForm from "@/components/MobileFeedbackForm";
+import BrandedFeedbackForm from "@/components/BrandedFeedbackForm";
 import { apiRequest } from "@/lib/queryClient";
 
-// FR-010: Public feedback form accessible via QR codes
+// FR-010: Public feedback form accessible via QR codes with custom branding
 export default function FeedbackPage() {
   // Parse URL parameters for QR code data
   const urlParams = new URLSearchParams(window.location.search);
@@ -47,13 +47,11 @@ export default function FeedbackPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <MobileFeedbackForm 
-        tenantId={tenantId}
-        locationId={locationId}
-        qrCodeId={qrCodeId || undefined}
-        surveyTemplateId={templateId || undefined}
-      />
-    </div>
+    <BrandedFeedbackForm 
+      tenantId={tenantId}
+      locationId={locationId}
+      qrCodeId={qrCodeId || undefined}
+      surveyTemplateId={templateId || undefined}
+    />
   );
 }
