@@ -10,6 +10,7 @@ import QRManagement from "@/pages/qr-management";
 import CompanyOnboarding from "@/pages/company-onboarding";
 import BranchManagement from "@/pages/branch-management";
 import OnboardingLanding from "@/pages/onboarding-landing";
+import CompanyTestPage from "@/pages/company-test";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/qr-management" component={QRManagement} />
       <Route path="/company-onboarding" component={CompanyOnboarding} />
       <Route path="/branch-management" component={BranchManagement} />
+      <Route path="/test" component={CompanyTestPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -28,10 +28,17 @@ const locationSchema = z.object({
 type LocationFormData = z.infer<typeof locationSchema>;
 
 interface BranchManagementProps {
-  tenantId: string;
+  tenantId?: string;
 }
 
-export default function BranchManagement({ tenantId }: BranchManagementProps) {
+// Get tenant ID from URL params if not provided
+function useTenantId(providedTenantId?: string): string {
+  const urlParams = new URLSearchParams(window.location.search);
+  return providedTenantId || urlParams.get('tenantId') || 'a550e8e0-d5e7-4f82-8b9a-123456789012';
+}
+
+export default function BranchManagement({ tenantId: providedTenantId }: BranchManagementProps) {
+  const tenantId = useTenantId(providedTenantId);
   const [isAddingLocation, setIsAddingLocation] = useState(false);
   const [editingLocation, setEditingLocation] = useState<any>(null);
   const [generatingQR, setGeneratingQR] = useState<string | null>(null);
@@ -65,13 +72,22 @@ export default function BranchManagement({ tenantId }: BranchManagementProps) {
   // Create location mutation
   const createLocation = useMutation({
     mutationFn: async (data: LocationFormData) => {
-      return await apiRequest("/api/locations", {
+      const response = await fetch("/api/locations", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           ...data,
           tenantId,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to create location');
+      }
+
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -87,10 +103,19 @@ export default function BranchManagement({ tenantId }: BranchManagementProps) {
   // Update location mutation
   const updateLocation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: LocationFormData }) => {
-      return await apiRequest(`/api/locations/${id}`, {
+      const response = await fetch(`/api/locations/${id}`, {
         method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(data),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to update location');
+      }
+
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -106,9 +131,15 @@ export default function BranchManagement({ tenantId }: BranchManagementProps) {
   // Delete location mutation
   const deleteLocation = useMutation({
     mutationFn: async (id: string) => {
-      return await apiRequest(`/api/locations/${id}`, {
+      const response = await fetch(`/api/locations/${id}`, {
         method: "DELETE",
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete location');
+      }
+
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -125,8 +156,11 @@ export default function BranchManagement({ tenantId }: BranchManagementProps) {
     
     try {
       // Create QR code entry in database
-      const qrCodeResponse = await apiRequest("/api/qr-codes", {
+      const response = await fetch("/api/qr-codes", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           tenantId,
           locationId: location.id,
@@ -134,6 +168,12 @@ export default function BranchManagement({ tenantId }: BranchManagementProps) {
           section: "Main",
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to create QR code entry');
+      }
+
+      const qrCodeResponse = await response.json();
 
       // Generate QR code image
       const feedbackUrl = `${window.location.origin}/feedback?t=${tenantId}&l=${location.id}&q=${qrCodeResponse.id}`;

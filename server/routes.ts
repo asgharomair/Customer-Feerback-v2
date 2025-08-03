@@ -106,6 +106,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Branch/Location management endpoints
+  app.get('/api/locations/:tenantId', async (req, res) => {
+    try {
+      const locations = await storage.getLocationsByTenant(req.params.tenantId);
+      res.json(locations);
+    } catch (error) {
+      console.error('Error fetching locations:', error);
+      res.status(500).json({ error: 'Failed to fetch locations' });
+    }
+  });
+
+  app.post('/api/locations', async (req, res) => {
+    try {
+      const location = await storage.createLocation(req.body);
+      res.json(location);
+    } catch (error) {
+      console.error('Error creating location:', error);
+      res.status(500).json({ error: 'Failed to create location' });
+    }
+  });
+
+  app.put('/api/locations/:id', async (req, res) => {
+    try {
+      const location = await storage.updateLocation(req.params.id, req.body);
+      res.json(location);
+    } catch (error) {
+      console.error('Error updating location:', error);
+      res.status(500).json({ error: 'Failed to update location' });
+    }
+  });
+
+  app.delete('/api/locations/:id', async (req, res) => {
+    try {
+      // Get all QR codes for this location and delete them first
+      const qrCodes = await storage.getQrCodesByLocation(req.params.id);
+      for (const qrCode of qrCodes) {
+        // In a real app, you'd have a delete method
+        // await storage.deleteQrCode(qrCode.id);
+      }
+      
+      // For now, we'll just mark location as inactive
+      await storage.updateLocation(req.params.id, { isActive: false });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting location:', error);
+      res.status(500).json({ error: 'Failed to delete location' });
+    }
+  });
+
+  // QR Code management endpoints
+  app.get('/api/qr-codes/:tenantId', async (req, res) => {
+    try {
+      const qrCodes = await storage.getQrCodesByTenant(req.params.tenantId);
+      res.json(qrCodes);
+    } catch (error) {
+      console.error('Error fetching QR codes:', error);
+      res.status(500).json({ error: 'Failed to fetch QR codes' });
+    }
+  });
+
+  app.post('/api/qr-codes', async (req, res) => {
+    try {
+      const qrCode = await storage.createQrCode(req.body);
+      res.json(qrCode);
+    } catch (error) {
+      console.error('Error creating QR code:', error);
+      res.status(500).json({ error: 'Failed to create QR code' });
+    }
+  });
+
+  // Object storage endpoints (simplified for now)
+  app.post('/api/objects/upload', async (req, res) => {
+    try {
+      // For now, return a mock upload URL since object storage needs proper setup
+      const mockUploadUrl = `https://storage.googleapis.com/mock-bucket/uploads/${Date.now()}.jpg`;
+      res.json({ uploadURL: mockUploadUrl });
+    } catch (error) {
+      console.error('Error getting upload URL:', error);
+      res.status(500).json({ error: 'Failed to get upload URL' });
+    }
+  });
+
   // Get tenant with locations and metrics
   app.get('/api/tenants/:id', async (req, res) => {
     try {
