@@ -48,11 +48,13 @@ export interface IStorage {
   updateLocation(id: string, location: Partial<InsertLocation>): Promise<Location>;
   getLocationsByTenant(tenantId: string): Promise<Location[]>;
 
-  // Survey Template operations
+  // Survey Template operations (FR-002: Industry-specific templates)
   getSurveyTemplate(id: string): Promise<SurveyTemplate | undefined>;
   createSurveyTemplate(template: InsertSurveyTemplate): Promise<SurveyTemplate>;
   updateSurveyTemplate(id: string, template: Partial<InsertSurveyTemplate>): Promise<SurveyTemplate>;
+  deleteSurveyTemplate(id: string): Promise<void>;
   getSurveyTemplatesByTenant(tenantId: string): Promise<SurveyTemplate[]>;
+  getSurveyTemplatesByIndustry(industry: string): Promise<SurveyTemplate[]>;
 
   // QR Code operations
   getQrCode(id: string): Promise<QrCode | undefined>;

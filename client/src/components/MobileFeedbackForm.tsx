@@ -1,352 +1,472 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
 import { z } from "zod";
-import { Star, Mic, Camera, Send } from "lucide-react";
+import { Star, Send, Camera, Mic, Image as ImageIcon, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { ObjectUploader } from "@/components/ObjectUploader";
-import type { UploadResult } from "@uppy/core";
+import VoiceRecorder from "./VoiceRecorder";
+import { ObjectUploader } from "./ui/ObjectUploader";
 
+// FR-007: Voice & multimedia feedback support
 const feedbackSchema = z.object({
   customerName: z.string().min(1, "Name is required"),
   customerEmail: z.string().email().optional().or(z.literal("")),
-  overallRating: z.number().min(1, "Please provide a rating").max(5),
+  overallRating: z.number().min(1).max(5),
   feedbackText: z.string().optional(),
-  customFields: z.record(z.any()).optional(),
+  voiceRecording: z.any().optional(),
+  images: z.array(z.any()).optional(),
 });
 
 type FeedbackFormData = z.infer<typeof feedbackSchema>;
 
 interface MobileFeedbackFormProps {
   tenantId: string;
-  locationId: string;
-  qrId?: string | null;
-  tenant?: any;
+  locationId?: string;
+  qrCodeId?: string;
+  surveyTemplateId?: string;
 }
 
 export default function MobileFeedbackForm({ 
   tenantId, 
   locationId, 
-  qrId, 
-  tenant 
+  qrCodeId, 
+  surveyTemplateId 
 }: MobileFeedbackFormProps) {
-  const [rating, setRating] = useState(0);
-  const [voiceRecordingUrl, setVoiceRecordingUrl] = useState<string>();
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [uploadedVoiceUrl, setUploadedVoiceUrl] = useState<string | null>(null);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch survey template if specified
+  const { data: surveyTemplate } = useQuery({
+    queryKey: [`/api/survey-templates/${surveyTemplateId}`],
+    enabled: !!surveyTemplateId,
+  });
+
+  // Fetch location info
+  const { data: location } = useQuery({
+    queryKey: [`/api/locations/${tenantId}`],
+    enabled: !!tenantId,
+    select: (data: any[]) => data.find((loc: any) => loc.id === locationId),
+  });
 
   const form = useForm<FeedbackFormData>({
     resolver: zodResolver(feedbackSchema),
     defaultValues: {
       customerName: "",
       customerEmail: "",
-      overallRating: 0,
+      overallRating: 5,
       feedbackText: "",
-      customFields: {},
     },
   });
 
-  const submitFeedbackMutation = useMutation({
+  // Submit feedback mutation
+  const submitFeedback = useMutation({
     mutationFn: async (data: FeedbackFormData) => {
-      const response = await apiRequest('POST', '/api/feedback', {
-        ...data,
+      const feedbackData = {
         tenantId,
         locationId,
-        qrCodeId: qrId,
-        voiceRecordingUrl,
-        imageUrls,
+        qrCodeId,
+        customerName: data.customerName,
+        customerEmail: data.customerEmail || null,
+        overallRating: data.overallRating,
+        feedbackText: data.feedbackText || null,
+        voiceRecordingUrl: uploadedVoiceUrl,
+        imageUrls: uploadedImageUrls,
+        surveyData: surveyTemplate ? JSON.stringify({
+          templateId: surveyTemplate.id,
+          templateName: surveyTemplate.name,
+          responses: data
+        }) : null,
+      };
+
+      return await apiRequest("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify(feedbackData),
       });
-      return response.json();
     },
-    onSuccess: (feedback) => {
-      setIsSubmitted(true);
+    onSuccess: () => {
       toast({
-        title: "Thank you!",
+        title: "Thank you for your feedback!",
         description: "Your feedback has been submitted successfully.",
       });
-
-      // Update with uploaded files if any
-      if (voiceRecordingUrl || imageUrls.length > 0) {
-        apiRequest('PUT', `/api/feedback/${feedback.id}/files`, {
-          voiceRecordingURL: voiceRecordingUrl,
-          imageURLs: imageUrls,
-        });
-      }
+      queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
+      form.reset();
+      setCurrentStep(1);
+      setVoiceBlob(null);
+      setImageFiles([]);
+      setUploadedVoiceUrl(null);
+      setUploadedImageUrls([]);
     },
     onError: (error) => {
+      console.error('Feedback submission error:', error);
       toast({
-        title: "Error",
-        description: "Failed to submit feedback. Please try again.",
+        title: "Submission Failed",
+        description: "There was an error submitting your feedback. Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  const handleVoiceUpload = async () => {
+  // Upload voice recording
+  const uploadVoice = async () => {
+    if (!voiceBlob) return;
+
     try {
-      const response = await apiRequest('POST', '/api/objects/upload');
-      const { uploadURL } = await response.json();
-      return { method: 'PUT' as const, url: uploadURL };
+      // Get upload URL
+      const uploadResponse = await apiRequest("/api/objects/upload", {
+        method: "POST",
+      });
+      
+      // Upload the audio file
+      const uploadResult = await fetch(uploadResponse.uploadURL, {
+        method: "PUT",
+        body: voiceBlob,
+        headers: {
+          'Content-Type': 'audio/webm;codecs=opus',
+        },
+      });
+
+      if (uploadResult.ok) {
+        setUploadedVoiceUrl(uploadResponse.uploadURL);
+        toast({
+          title: "Voice recording uploaded",
+          description: "Your voice feedback has been saved.",
+        });
+      }
     } catch (error) {
+      console.error('Voice upload error:', error);
       toast({
-        title: "Error",
-        description: "Failed to get upload URL for voice recording",
+        title: "Upload failed",
+        description: "Could not upload voice recording. Please try again.",
         variant: "destructive",
       });
-      throw error;
     }
   };
 
-  const handleVoiceComplete = (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
-    if (result.successful.length > 0) {
-      setVoiceRecordingUrl(result.successful[0].uploadURL as string);
+  // Upload images
+  const uploadImages = async () => {
+    if (imageFiles.length === 0) return;
+
+    const uploadedUrls: string[] = [];
+
+    for (const file of imageFiles) {
+      try {
+        // Get upload URL
+        const uploadResponse = await apiRequest("/api/objects/upload", {
+          method: "POST",
+        });
+        
+        // Upload the image file
+        const uploadResult = await fetch(uploadResponse.uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: {
+            'Content-Type': file.type,
+          },
+        });
+
+        if (uploadResult.ok) {
+          uploadedUrls.push(uploadResponse.uploadURL);
+        }
+      } catch (error) {
+        console.error('Image upload error:', error);
+      }
+    }
+
+    setUploadedImageUrls(uploadedUrls);
+    if (uploadedUrls.length > 0) {
       toast({
-        title: "Voice recorded",
-        description: "Your voice feedback has been recorded successfully.",
+        title: "Images uploaded",
+        description: `${uploadedUrls.length} image(s) have been uploaded.`,
       });
     }
   };
 
-  const handleImageUpload = async () => {
+  // Handle form submission
+  const onSubmit = async (data: FeedbackFormData) => {
+    setIsSubmitting(true);
+    
     try {
-      const response = await apiRequest('POST', '/api/objects/upload');
-      const { uploadURL } = await response.json();
-      return { method: 'PUT' as const, url: uploadURL };
+      // Upload files if any
+      if (voiceBlob && !uploadedVoiceUrl) {
+        await uploadVoice();
+      }
+      if (imageFiles.length > 0 && uploadedImageUrls.length === 0) {
+        await uploadImages();
+      }
+
+      // Submit feedback
+      await submitFeedback.mutateAsync(data);
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to get upload URL for image",
-        variant: "destructive",
-      });
-      throw error;
+      console.error('Submission error:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleImageComplete = (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
-    if (result.successful.length > 0) {
-      const newImageUrls = result.successful.map(file => file.uploadURL as string);
-      setImageUrls(prev => [...prev, ...newImageUrls]);
-      toast({
-        title: "Image uploaded",
-        description: "Your image has been uploaded successfully.",
-      });
-    }
-  };
-
-  const onSubmit = (data: FeedbackFormData) => {
-    const formData = {
-      ...data,
-      overallRating: rating,
-    };
-    submitFeedbackMutation.mutate(formData);
-  };
-
-  if (isSubmitted) {
-    return (
-      <div className="max-w-md mx-auto bg-white min-h-screen flex items-center justify-center">
-        <Card className="w-full mx-4">
-          <CardContent className="p-8 text-center">
-            <div className="w-16 h-16 bg-success-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Send className="w-8 h-8 text-success-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Thank You!</h2>
-            <p className="text-gray-600 mb-6">
-              Your feedback has been submitted successfully. We appreciate your time and will use your input to improve our service.
-            </p>
-            <Button onClick={() => window.location.reload()} className="w-full">
-              Submit Another Review
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-md mx-auto bg-white min-h-screen">
-      {/* Mobile Header */}
-      <div className="bg-gradient-to-r from-primary to-primary/90 px-6 py-8 text-white">
-        <div className="text-center">
-          <img 
-            src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=300&h=120" 
-            alt="Business" 
-            className="w-16 h-16 rounded-full mx-auto mb-4 object-cover border-2 border-white/20"
+  // Rating component
+  const RatingInput = ({ value, onChange }: { value: number; onChange: (rating: number) => void }) => (
+    <div className="flex justify-center space-x-2 py-4">
+      {[1, 2, 3, 4, 5].map((rating) => (
+        <button
+          key={rating}
+          type="button"
+          onClick={() => onChange(rating)}
+          className="transform transition-transform hover:scale-110"
+        >
+          <Star
+            className={`w-10 h-10 ${
+              rating <= value 
+                ? "fill-yellow-400 text-yellow-400" 
+                : "text-gray-300"
+            }`}
           />
-          <h1 className="text-xl font-bold">
-            {tenant?.companyName || "Business Name"}
-          </h1>
-          <p className="text-primary-100">
-            Main Location
+        </button>
+      ))}
+    </div>
+  );
+
+  // Step 1: Basic Info & Rating
+  const renderStep1 = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          How was your experience?
+        </h2>
+        {location && (
+          <p className="text-gray-600 flex items-center justify-center">
+            <MapPin className="w-4 h-4 mr-1" />
+            {location.name}
           </p>
+        )}
+      </div>
+
+      <FormField
+        control={form.control}
+        name="overallRating"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-center block text-lg">Rate Your Experience</FormLabel>
+            <FormControl>
+              <RatingInput
+                value={field.value}
+                onChange={field.onChange}
+              />
+            </FormControl>
+            <div className="text-center text-sm text-gray-500">
+              {field.value === 1 && "Very Poor"}
+              {field.value === 2 && "Poor"}
+              {field.value === 3 && "Average"}
+              {field.value === 4 && "Good"}
+              {field.value === 5 && "Excellent"}
+            </div>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name="customerName"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Your Name</FormLabel>
+            <FormControl>
+              <Input placeholder="Enter your name" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name="customerEmail"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Email (Optional)</FormLabel>
+            <FormControl>
+              <Input 
+                type="email" 
+                placeholder="your.email@example.com" 
+                {...field} 
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <Button
+        type="button"
+        onClick={() => setCurrentStep(2)}
+        className="w-full"
+        size="lg"
+      >
+        Continue
+      </Button>
+    </div>
+  );
+
+  // Step 2: Additional Feedback
+  const renderStep2 = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          Tell us more
+        </h2>
+        <p className="text-gray-600">
+          Share additional details about your experience
+        </p>
+      </div>
+
+      <FormField
+        control={form.control}
+        name="feedbackText"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Additional Comments</FormLabel>
+            <FormControl>
+              <Textarea
+                placeholder="Tell us more about your experience..."
+                className="min-h-[120px]"
+                {...field}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      {/* Voice Recording Section (FR-007: Voice feedback) */}
+      <div className="space-y-4">
+        <div className="border-t pt-4">
+          <h3 className="text-lg font-medium mb-3 flex items-center">
+            <Mic className="w-5 h-5 mr-2" />
+            Voice Feedback (Optional)
+          </h3>
+          <VoiceRecorder
+            onRecordingComplete={(blob: Blob) => setVoiceBlob(blob)}
+            maxDuration={120} // 2 minutes
+          />
+        </div>
+
+        {/* Image Upload Section (FR-007: Image feedback) */}
+        <div className="border-t pt-4">
+          <h3 className="text-lg font-medium mb-3 flex items-center">
+            <Camera className="w-5 h-5 mr-2" />
+            Add Photos (Optional)
+          </h3>
+          
+          <ObjectUploader
+            maxNumberOfFiles={3}
+            maxFileSize={5242880} // 5MB
+            onGetUploadParameters={async () => {
+              const response = await apiRequest("/api/objects/upload", {
+                method: "POST",
+              });
+              return {
+                method: "PUT" as const,
+                url: response.uploadURL,
+              };
+            }}
+            onComplete={(result) => {
+              const urls = result.successful.map(file => file.uploadURL);
+              setUploadedImageUrls(prev => [...prev, ...urls]);
+              toast({
+                title: "Images uploaded",
+                description: `${result.successful.length} image(s) uploaded successfully.`,
+              });
+            }}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              <ImageIcon className="w-5 h-5" />
+              <span>Upload Photos</span>
+            </div>
+          </ObjectUploader>
+
+          {uploadedImageUrls.length > 0 && (
+            <div className="mt-3 text-sm text-green-600">
+              ✓ {uploadedImageUrls.length} photo(s) uploaded
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Feedback Form */}
-      <div className="px-6 py-6">
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Tell us about your experience
-              </h2>
-              
-              <div className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="customerName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Your Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter your name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+      <div className="flex space-x-3">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setCurrentStep(1)}
+          className="flex-1"
+        >
+          Back
+        </Button>
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="flex-1 bg-primary hover:bg-primary/90"
+          size="lg"
+        >
+          {isSubmitting ? (
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              <span>Submitting...</span>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <Send className="w-4 h-4" />
+              <span>Submit Feedback</span>
+            </div>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
+      <div className="max-w-md mx-auto">
+        <Card className="shadow-lg border-0">
+          <CardHeader className="text-center pb-6">
+            <CardTitle className="text-2xl font-bold text-primary">
+              Customer Feedback
+            </CardTitle>
+            <div className="flex justify-center space-x-2 mt-4">
+              {[1, 2].map((step) => (
+                <div
+                  key={step}
+                  className={`w-3 h-3 rounded-full ${
+                    currentStep >= step ? "bg-primary" : "bg-gray-200"
+                  }`}
                 />
-                
-                <FormField
-                  control={form.control}
-                  name="customerEmail"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email (Optional)</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="your@email.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              ))}
             </div>
-
-            {/* Rating Section */}
-            <div>
-              <FormLabel className="block text-sm font-medium text-gray-700 mb-3">
-                Overall Rating
-              </FormLabel>
-              <div className="flex justify-center space-x-2 mb-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    className="w-12 h-12 text-2xl transition-colors"
-                    onClick={() => {
-                      setRating(star);
-                      form.setValue("overallRating", star);
-                    }}
-                  >
-                    <Star
-                      className={`w-8 h-8 ${
-                        star <= rating
-                          ? "text-yellow-400 fill-current"
-                          : "text-gray-300"
-                      }`}
-                    />
-                  </button>
-                ))}
-              </div>
-              <p className="text-center text-sm text-gray-500">
-                Tap to rate your experience
-              </p>
-              {form.formState.errors.overallRating && (
-                <p className="text-center text-sm text-destructive mt-2">
-                  {form.formState.errors.overallRating.message}
-                </p>
-              )}
-            </div>
-
-            {/* Feedback Text */}
-            <FormField
-              control={form.control}
-              name="feedbackText"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Your Feedback</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      rows={4}
-                      placeholder="Tell us about your experience..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Multimedia Upload */}
-            <div>
-              <p className="text-sm font-medium text-gray-700 mb-3">
-                Add Voice or Photos
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Voice Recording */}
-                <ObjectUploader
-                  maxNumberOfFiles={1}
-                  maxFileSize={10485760} // 10MB
-                  onGetUploadParameters={handleVoiceUpload}
-                  onComplete={handleVoiceComplete}
-                  buttonClassName="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-400 transition-colors w-full"
-                >
-                  <Mic className="text-2xl text-gray-400 mb-2" />
-                  <span className="text-sm text-gray-600">Record Voice</span>
-                  <span className="text-xs text-gray-500">Up to 2 min</span>
-                </ObjectUploader>
-                
-                {/* Photo Upload */}
-                <ObjectUploader
-                  maxNumberOfFiles={3}
-                  maxFileSize={20971520} // 20MB
-                  onGetUploadParameters={handleImageUpload}
-                  onComplete={handleImageComplete}
-                  buttonClassName="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-400 transition-colors w-full"
-                >
-                  <Camera className="text-2xl text-gray-400 mb-2" />
-                  <span className="text-sm text-gray-600">Take Photo</span>
-                  <span className="text-xs text-gray-500">Up to 20MB</span>
-                </ObjectUploader>
-              </div>
-
-              {/* Show uploaded files */}
-              {(voiceRecordingUrl || imageUrls.length > 0) && (
-                <div className="mt-3 space-y-2">
-                  {voiceRecordingUrl && (
-                    <Badge variant="secondary">
-                      <Mic className="w-3 h-3 mr-1" />
-                      Voice recording added
-                    </Badge>
-                  )}
-                  {imageUrls.map((_, index) => (
-                    <Badge key={index} variant="secondary">
-                      <Camera className="w-3 h-3 mr-1" />
-                      Image {index + 1} added
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              className="w-full py-4"
-              disabled={submitFeedbackMutation.isPending}
-            >
-              {submitFeedbackMutation.isPending ? "Submitting..." : "Submit Feedback"}
-            </Button>
-          </form>
-        </Form>
+          </CardHeader>
+          
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                {currentStep === 1 && renderStep1()}
+                {currentStep === 2 && renderStep2()}
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

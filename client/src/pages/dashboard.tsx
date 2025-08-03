@@ -44,7 +44,7 @@ export default function Dashboard() {
                 variant="ghost"
                 className="px-4 py-3 text-sm font-medium rounded-none"
               >
-                QR Code Management
+                Survey Builder
               </Button>
             </Link>
           </div>

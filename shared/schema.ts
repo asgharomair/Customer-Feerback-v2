@@ -69,14 +69,14 @@ export const locations = pgTable("locations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Survey templates
+// Survey templates (Industry-specific form templates)
 export const surveyTemplates = pgTable("survey_templates", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid("tenant_id").references(() => tenants.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  industry: varchar("industry", { length: 100 }),
-  fields: jsonb("fields").notNull(), // Array of field definitions
+  industry: varchar("industry", { length: 100 }).notNull(),
+  fields: jsonb("fields").notNull(), // Stores field definitions as JSON
   isDefault: boolean("is_default").default(false),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -214,6 +214,44 @@ export const feedbackResponseRelations = relations(feedbackResponses, ({ one }) 
   location: one(locations, {
     fields: [feedbackResponses.locationId],
     references: [locations.id],
+  }),
+  qrCode: one(qrCodes, {
+    fields: [feedbackResponses.qrCodeId],
+    references: [qrCodes.id],
+  }),
+}));
+
+export const surveyTemplateRelations = relations(surveyTemplates, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [surveyTemplates.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
+export const alertRuleRelations = relations(alertRules, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [alertRules.tenantId],
+    references: [tenants.id],
+  }),
+  notifications: many(alertNotifications),
+}));
+
+export const alertNotificationRelations = relations(alertNotifications, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [alertNotifications.tenantId],
+    references: [tenants.id],
+  }),
+  alertRule: one(alertRules, {
+    fields: [alertNotifications.alertRuleId],
+    references: [alertRules.id],
+  }),
+  feedback: one(feedbackResponses, {
+    fields: [alertNotifications.feedbackId],
+    references: [feedbackResponses.id],
+  }),
+  acknowledgedUser: one(users, {
+    fields: [alertNotifications.acknowledgedBy],
+    references: [users.id],
   }),
   qrCode: one(qrCodes, {
     fields: [feedbackResponses.qrCodeId],

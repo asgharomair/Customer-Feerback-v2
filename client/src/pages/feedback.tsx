@@ -1,70 +1,58 @@
-import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import MobileFeedbackForm from "@/components/MobileFeedbackForm";
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
-export default function FeedbackForm() {
-  const [location] = useLocation();
-  const searchParams = new URLSearchParams(location.split('?')[1] || '');
-  const tenantId = searchParams.get('t');
-  const locationId = searchParams.get('l');
-  const qrId = searchParams.get('q');
+// FR-010: Public feedback form accessible via QR codes
+export default function FeedbackPage() {
+  // Parse URL parameters for QR code data
+  const urlParams = new URLSearchParams(window.location.search);
+  const tenantId = urlParams.get('t');
+  const locationId = urlParams.get('l');
+  const qrCodeId = urlParams.get('q');
+  const templateId = urlParams.get('template');
 
-  // Track QR scan if qrId is present
-  const { data: qrScanTracked } = useQuery({
-    queryKey: ['/api/qr-codes', qrId, 'scan'],
-    queryFn: async () => {
-      if (qrId) {
-        const response = await fetch(`/api/qr-codes/${qrId}/scan`, {
-          method: 'POST',
-        });
-        return response.json();
-      }
-      return null;
-    },
-    enabled: !!qrId,
-  });
+  useEffect(() => {
+    // Track QR code scan when page loads (FR-060: QR code analytics)
+    if (qrCodeId) {
+      trackQrScan(qrCodeId);
+    }
+  }, [qrCodeId]);
 
-  // Get tenant information
-  const { data: tenant, isLoading: tenantLoading } = useQuery({
-    queryKey: ['/api/tenants', tenantId],
-    enabled: !!tenantId,
-  });
+  const trackQrScan = async (qrCodeId: string) => {
+    try {
+      await apiRequest(`/api/qr-codes/${qrCodeId}/scan`, {
+        method: "POST",
+        body: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to track QR scan:', error);
+    }
+  };
 
+  // Handle invalid or missing parameters
   if (!tenantId || !locationId) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md mx-4">
-          <CardContent className="pt-6">
-            <div className="flex mb-4 gap-2">
-              <AlertCircle className="h-8 w-8 text-red-500" />
-              <h1 className="text-2xl font-bold text-gray-900">Invalid Link</h1>
-            </div>
-            <p className="mt-4 text-sm text-gray-600">
-              This feedback link appears to be invalid. Please scan the QR code again or contact the business for assistance.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (tenantLoading) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-800 mb-4">Invalid Feedback Link</h1>
+          <p className="text-red-600">
+            This feedback link appears to be invalid or expired. Please scan the QR code again or contact the business directly.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       <MobileFeedbackForm 
         tenantId={tenantId}
         locationId={locationId}
-        qrId={qrId}
-        tenant={tenant}
+        qrCodeId={qrCodeId || undefined}
+        surveyTemplateId={templateId || undefined}
       />
     </div>
   );

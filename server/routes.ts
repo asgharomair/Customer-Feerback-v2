@@ -16,11 +16,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   const clients = new Map<string, WebSocket>();
 
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', (ws: any, req) => {
     const clientId = randomUUID();
     clients.set(clientId, ws);
 
-    ws.on('message', (message) => {
+    ws.on('message', (message: any) => {
       try {
         const data = JSON.parse(message.toString());
         if (data.type === 'auth' && data.tenantId) {
@@ -39,7 +39,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Broadcast alert to all connected clients of a tenant
   function broadcastAlert(tenantId: string, alert: any) {
-    clients.forEach((client) => {
+    clients.forEach((client: any) => {
       if (client.readyState === WebSocket.OPEN && client.tenantId === tenantId) {
         client.send(JSON.stringify({
           type: 'alert',
@@ -71,12 +71,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: "Default Feedback Survey",
         description: "Standard customer feedback form",
         industry: tenant.industry,
-        fields: [
+        fields: JSON.stringify([
           { id: 'customer_name', type: 'text', label: 'Your Name', required: true },
           { id: 'customer_email', type: 'email', label: 'Email (Optional)', required: false },
-          { id: 'overall_rating', type: 'rating', label: 'Overall Rating', required: true, max: 5 },
+          { id: 'overall_rating', type: 'rating', label: 'Overall Experience', required: true, scale: 5 },
           { id: 'feedback_text', type: 'textarea', label: 'Your Feedback', required: false }
-        ],
+        ]),
         isDefault: true,
         isActive: true
       });
@@ -144,6 +144,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Survey template endpoints
+  app.get('/api/survey-templates/:tenantId', async (req, res) => {
+    try {
+      const templates = await storage.getSurveyTemplatesByTenant(req.params.tenantId);
+      res.json(templates);
+    } catch (error) {
+      console.error('Error fetching survey templates:', error);
+      res.status(500).json({ error: 'Failed to fetch survey templates' });
+    }
+  });
+
+  app.post('/api/survey-templates', async (req, res) => {
+    try {
+      const template = await storage.createSurveyTemplate(req.body);
+      res.json(template);
+    } catch (error) {
+      console.error('Error creating survey template:', error);
+      res.status(500).json({ error: 'Failed to create survey template' });
+    }
+  });
+
+  app.put('/api/survey-templates/:id', async (req, res) => {
+    try {
+      const template = await storage.updateSurveyTemplate(req.params.id, req.body);
+      res.json(template);
+    } catch (error) {
+      console.error('Error updating survey template:', error);
+      res.status(500).json({ error: 'Failed to update survey template' });
+    }
+  });
+
+  app.delete('/api/survey-templates/:id', async (req, res) => {
+    try {
+      await storage.deleteSurveyTemplate(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting survey template:', error);
+      res.status(500).json({ error: 'Failed to delete survey template' });
+    }
+  });
+
+  // Object storage endpoints for voice and image uploads  
+  app.post('/api/objects/upload', async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error('Error getting upload URL:', error);
+      res.status(500).json({ error: 'Failed to get upload URL' });
+    }
+  });
+
   app.post('/api/feedback', async (req, res) => {
     try {
       const validatedData = insertFeedbackResponseSchema.parse(req.body);
@@ -168,6 +221,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error creating feedback:', error);
       res.status(500).json({ error: 'Failed to create feedback' });
+    }
+  });
+
+  // Public reviews endpoint (FR-080: Public review integration)
+  app.get('/api/public-reviews/:tenantId', async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const locationId = req.query.locationId as string;
+      
+      // Fetch feedback that's marked as public (high ratings only)
+      let feedback = await storage.getFeedbackResponsesByTenant(req.params.tenantId, limit);
+      
+      // Filter for public display (only positive reviews with rating >= 4)
+      const publicReviews = feedback
+        .filter(review => review.overallRating >= 4 && review.customerName)
+        .map(review => ({
+          id: review.id,
+          customerName: review.customerName,
+          overallRating: review.overallRating,
+          feedbackText: review.feedbackText,
+          voiceRecordingUrl: review.voiceRecordingUrl,
+          imageUrls: review.imageUrls,
+          createdAt: review.createdAt,
+          isPublic: true
+        }));
+
+      res.json(publicReviews);
+    } catch (error) {
+      console.error('Error fetching public reviews:', error);
+      res.status(500).json({ error: 'Failed to fetch public reviews' });
     }
   });
 
@@ -385,6 +468,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to update feedback files" });
     }
   });
+
+  // Email/SMS notification system for alerts (FR-040: Multiple notification channels)
+  async function sendAlertNotifications(rule: any, feedback: any, alert: any) {
+    try {
+      const actions = rule.actions || [];
+      
+      for (const action of actions) {
+        if (action.type === 'email' && action.recipients) {
+          // Send email notifications using SendGrid
+          const { MailService } = await import('@sendgrid/mail');
+          
+          if (process.env.SENDGRID_API_KEY) {
+            const mailService = new MailService();
+            mailService.setApiKey(process.env.SENDGRID_API_KEY);
+            
+            const emailContent = {
+              to: action.recipients,
+              from: action.fromEmail || 'alerts@feedbackplatform.com',
+              subject: `${alert.severity.toUpperCase()}: ${alert.title}`,
+              html: `
+                <h2>${alert.title}</h2>
+                <p><strong>Severity:</strong> ${alert.severity}</p>
+                <p><strong>Message:</strong> ${alert.message}</p>
+                <p><strong>Customer Rating:</strong> ${feedback.overallRating}/5</p>
+                <p><strong>Customer Name:</strong> ${feedback.customerName || 'Anonymous'}</p>
+                <p><strong>Feedback:</strong> ${feedback.feedbackText || 'No additional comments'}</p>
+                <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                <hr>
+                <p><em>This is an automated alert from your Feedback Management System.</em></p>
+              `
+            };
+            
+            await mailService.send(emailContent);
+            console.log('Email alert sent successfully');
+          }
+        }
+        
+        if (action.type === 'sms' && action.phoneNumbers) {
+          // SMS notifications would be implemented here with Twilio or similar service
+          console.log('SMS alert would be sent to:', action.phoneNumbers);
+          console.log('SMS content:', `ALERT: ${alert.title} - Rating: ${feedback.overallRating}/5`);
+        }
+        
+        if (action.type === 'webhook' && action.url) {
+          // Send webhook notification
+          try {
+            await fetch(action.url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                alert,
+                feedback,
+                timestamp: new Date().toISOString()
+              })
+            });
+            console.log('Webhook alert sent successfully');
+          } catch (webhookError) {
+            console.error('Webhook alert failed:', webhookError);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error sending alert notifications:', error);
+    }
+  }
 
   return httpServer;
 }
