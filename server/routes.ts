@@ -49,27 +49,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
-  // Demo tenant creation endpoint (in production, this would be part of registration flow)
+  // Company onboarding endpoint
   app.post('/api/tenants', async (req, res) => {
     try {
+      console.log('Creating tenant with data:', req.body);
+      
+      // Validate required fields
+      const requiredFields = ['legalName', 'brandName', 'industry', 'primaryContactName', 'primaryContactEmail'];
+      for (const field of requiredFields) {
+        if (!req.body[field]) {
+          return res.status(400).json({ 
+            error: `Missing required field: ${field}` 
+          });
+        }
+      }
+
       const tenant = await storage.createTenant(req.body);
       
-      // Create default location
+      // Create default location based on business address
       const defaultLocation = await storage.createLocation({
         tenantId: tenant.id,
-        name: "Main Location",
-        address: "123 Main St",
-        city: "Anytown",
-        state: "State",
-        zipCode: "12345",
+        name: req.body.brandName + " - Main Location",
+        address: req.body.businessAddress || "Main Location",
+        city: req.body.city || "City",
+        state: req.body.state || "State",
+        zipCode: req.body.postalCode || "00000",
+        phone: req.body.primaryContactPhone || null,
+        email: req.body.primaryContactEmail,
         isActive: true
       });
 
-      // Create default survey template
+      // Create industry-specific survey template
       await storage.createSurveyTemplate({
         tenantId: tenant.id,
-        name: "Default Feedback Survey",
-        description: "Standard customer feedback form",
+        name: `${req.body.industry} Feedback Survey`,
+        description: `Customer feedback form for ${req.body.brandName}`,
         industry: tenant.industry,
         fields: JSON.stringify([
           { id: 'customer_name', type: 'text', label: 'Your Name', required: true },
@@ -81,10 +95,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isActive: true
       });
 
+      console.log('Tenant created successfully:', tenant.id);
       res.json(tenant);
     } catch (error) {
       console.error('Error creating tenant:', error);
-      res.status(500).json({ error: 'Failed to create tenant' });
+      res.status(500).json({ 
+        error: 'Failed to create company profile', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
   });
 

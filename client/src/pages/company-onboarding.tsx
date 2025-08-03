@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { ObjectUploader } from "@/components/ui/ObjectUploader";
+// Removed ObjectUploader import - using simple file input instead
 import { Progress } from "@/components/ui/progress";
 
 // Company onboarding form schema
@@ -124,10 +124,19 @@ export default function CompanyOnboarding() {
         onboardingCompleted: true,
       };
 
-      return await apiRequest("/api/tenants", {
+      const response = await fetch("/api/tenants", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(companyData),
       });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create company: ${response.statusText}`);
+      }
+
+      return await response.json();
     },
     onSuccess: (newCompany) => {
       toast({
@@ -176,12 +185,21 @@ export default function CompanyOnboarding() {
 
     try {
       // Get upload URL
-      const uploadResponse = await apiRequest("/api/objects/upload", {
+      const uploadResponse = await fetch("/api/objects/upload", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to get upload URL");
+      }
+
+      const uploadData = await uploadResponse.json();
       
       // Upload the logo file
-      const uploadResult = await fetch(uploadResponse.uploadURL, {
+      const uploadResult = await fetch(uploadData.uploadURL, {
         method: "PUT",
         body: logoFile,
         headers: {
@@ -190,7 +208,7 @@ export default function CompanyOnboarding() {
       });
 
       if (uploadResult.ok) {
-        setUploadedLogoUrl(uploadResponse.uploadURL);
+        setUploadedLogoUrl(uploadData.uploadURL);
         toast({
           title: "Logo uploaded",
           description: "Your company logo has been saved.",
@@ -607,33 +625,35 @@ export default function CompanyOnboarding() {
       {/* Logo Upload */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Company Logo</h3>
-        <ObjectUploader
-          maxNumberOfFiles={1}
-          maxFileSize={2097152} // 2MB
-          onGetUploadParameters={async () => {
-            const response = await apiRequest("/api/objects/upload", {
-              method: "POST",
-            });
-            return {
-              method: "PUT" as const,
-              url: response.uploadURL,
-            };
-          }}
-          onComplete={(result) => {
-            if (result.successful.length > 0) {
-              setUploadedLogoUrl(result.successful[0].uploadURL);
-              toast({
-                title: "Logo uploaded",
-                description: "Your company logo has been saved.",
-              });
-            }
-          }}
-        >
-          <div className="flex items-center space-x-2">
-            <Building className="w-5 h-5" />
-            <span>Upload Logo</span>
-          </div>
-        </ObjectUploader>
+        <div className="space-y-2">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file && file.size <= 2097152) { // 2MB limit
+                setLogoFile(file);
+                toast({
+                  title: "Logo selected",
+                  description: "Logo will be uploaded when you complete setup.",
+                });
+              } else if (file) {
+                toast({
+                  title: "File too large",
+                  description: "Please choose an image smaller than 2MB.",
+                  variant: "destructive",
+                });
+              }
+            }}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary file:text-white hover:file:bg-primary/90"
+          />
+          {logoFile && (
+            <div className="text-sm text-green-600">✓ {logoFile.name} selected</div>
+          )}
+          {uploadedLogoUrl && (
+            <div className="text-sm text-green-600">✓ Logo uploaded successfully</div>
+          )}
+        </div>
         {uploadedLogoUrl && (
           <div className="text-sm text-green-600">✓ Logo uploaded successfully</div>
         )}
