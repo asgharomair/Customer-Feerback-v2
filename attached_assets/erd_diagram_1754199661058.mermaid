@@ -1,0 +1,245 @@
+erDiagram
+    %% Multi-Tenant Feedback Management System ERD
+    
+    TENANTS {
+        uuid tenant_id PK
+        string company_name
+        string industry_type
+        string subscription_plan
+        timestamp created_at
+        timestamp updated_at
+        boolean is_active
+        json contact_details
+        string timezone
+    }
+    
+    USERS {
+        uuid user_id PK
+        uuid tenant_id FK
+        string email UK
+        string password_hash
+        string first_name
+        string last_name
+        string role
+        boolean is_active
+        timestamp last_login
+        timestamp created_at
+        timestamp updated_at
+        string phone_number
+        json preferences
+    }
+    
+    LOCATIONS {
+        uuid location_id PK
+        uuid tenant_id FK
+        string location_name
+        string address
+        string city
+        string state
+        string country
+        string postal_code
+        decimal latitude
+        decimal longitude
+        boolean is_active
+        timestamp created_at
+        json contact_info
+    }
+    
+    CUSTOM_FIELD_DEFINITIONS {
+        uuid field_definition_id PK
+        uuid tenant_id FK
+        string field_name
+        string field_type
+        json field_options
+        boolean is_required
+        int display_order
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+        string validation_rules
+    }
+    
+    SURVEY_TEMPLATES {
+        uuid template_id PK
+        uuid tenant_id FK
+        string template_name
+        string industry_type
+        json template_structure
+        boolean is_default
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+        string description
+    }
+    
+    QR_CODES {
+        uuid qr_code_id PK
+        uuid tenant_id FK
+        uuid location_id FK
+        string qr_code_data
+        string table_number
+        string bed_number
+        string encoded_url
+        boolean is_active
+        timestamp created_at
+        timestamp last_scanned
+        int scan_count
+    }
+    
+    FEEDBACK_RESPONSES {
+        uuid response_id PK
+        uuid tenant_id FK
+        uuid location_id FK
+        uuid qr_code_id FK
+        string customer_name
+        string customer_email
+        string customer_phone
+        decimal overall_rating
+        text feedback_text
+        timestamp submitted_at
+        string ip_address
+        string user_agent
+        json location_data
+        string status
+    }
+    
+    CUSTOM_FIELD_VALUES {
+        uuid value_id PK
+        uuid response_id FK
+        uuid field_definition_id FK
+        text field_value
+        timestamp created_at
+    }
+    
+    MULTIMEDIA_FILES {
+        uuid file_id PK
+        uuid response_id FK
+        string file_type
+        string file_name
+        string backblaze_url
+        string backblaze_file_id
+        bigint file_size
+        string mime_type
+        timestamp uploaded_at
+        boolean is_processed
+        json metadata
+    }
+    
+    ALERTS {
+        uuid alert_id PK
+        uuid tenant_id FK
+        string alert_name
+        json trigger_conditions
+        json notification_channels
+        json recipient_list
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    ALERT_LOGS {
+        uuid log_id PK
+        uuid alert_id FK
+        uuid response_id FK
+        string alert_type
+        json alert_data
+        string status
+        timestamp triggered_at
+        timestamp sent_at
+        string error_message
+    }
+    
+    PUBLIC_REVIEWS {
+        uuid review_id PK
+        uuid tenant_id FK
+        uuid location_id FK
+        string platform_name
+        string external_review_id
+        string reviewer_name
+        decimal rating
+        text review_text
+        timestamp review_date
+        timestamp imported_at
+        json platform_data
+        string status
+    }
+    
+    REPORTS {
+        uuid report_id PK
+        uuid tenant_id FK
+        uuid generated_by FK
+        string report_type
+        json report_parameters
+        string file_format
+        string backblaze_url
+        timestamp generated_at
+        timestamp expires_at
+        string status
+    }
+    
+    ANALYTICS_CACHE {
+        uuid cache_id PK
+        uuid tenant_id FK
+        string metric_type
+        json metric_data
+        date calculation_date
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    API_INTEGRATIONS {
+        uuid integration_id PK
+        uuid tenant_id FK
+        string platform_name
+        json api_credentials
+        json configuration
+        boolean is_active
+        timestamp last_sync
+        timestamp created_at
+        string status
+    }
+    
+    NOTIFICATION_LOGS {
+        uuid notification_id PK
+        uuid tenant_id FK
+        uuid response_id FK
+        string notification_type
+        string recipient
+        string subject
+        text message_body
+        string status
+        timestamp sent_at
+        string error_message
+        int retry_count
+    }
+    
+    %% Relationships
+    TENANTS ||--o{ USERS : has
+    TENANTS ||--o{ LOCATIONS : has
+    TENANTS ||--o{ CUSTOM_FIELD_DEFINITIONS : defines
+    TENANTS ||--o{ SURVEY_TEMPLATES : creates
+    TENANTS ||--o{ QR_CODES : generates
+    TENANTS ||--o{ FEEDBACK_RESPONSES : receives
+    TENANTS ||--o{ ALERTS : configures
+    TENANTS ||--o{ PUBLIC_REVIEWS : imports
+    TENANTS ||--o{ REPORTS : generates
+    TENANTS ||--o{ ANALYTICS_CACHE : stores
+    TENANTS ||--o{ API_INTEGRATIONS : configures
+    TENANTS ||--o{ NOTIFICATION_LOGS : sends
+    
+    LOCATIONS ||--o{ QR_CODES : contains
+    LOCATIONS ||--o{ FEEDBACK_RESPONSES : receives
+    LOCATIONS ||--o{ PUBLIC_REVIEWS : associated_with
+    
+    QR_CODES ||--o{ FEEDBACK_RESPONSES : triggers
+    
+    FEEDBACK_RESPONSES ||--o{ CUSTOM_FIELD_VALUES : contains
+    FEEDBACK_RESPONSES ||--o{ MULTIMEDIA_FILES : includes
+    FEEDBACK_RESPONSES ||--o{ ALERT_LOGS : triggers
+    FEEDBACK_RESPONSES ||--o{ NOTIFICATION_LOGS : generates
+    
+    CUSTOM_FIELD_DEFINITIONS ||--o{ CUSTOM_FIELD_VALUES : defines
+    
+    ALERTS ||--o{ ALERT_LOGS : generates
+    
+    USERS ||--o{ REPORTS : generates
