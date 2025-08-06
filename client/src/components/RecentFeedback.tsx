@@ -1,65 +1,39 @@
 import { useQuery } from "@tanstack/react-query";
-import { Star, User, Mic, Image, Eye, MessageSquare } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
-const DEMO_TENANT_ID = "a550e8e0-d5e7-4f82-8b9a-123456789012";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { MessageSquare, Star, Clock, MapPin, Play, Image as ImageIcon } from "lucide-react";
+import { useState } from "react";
 
 export default function RecentFeedback() {
-  const { data: feedback, isLoading } = useQuery({
-    queryKey: ['/api/feedback', DEMO_TENANT_ID, { limit: 10 }],
-    refetchInterval: 60000, // Refresh every minute
-  });
+  const [showDetails, setShowDetails] = useState<string | null>(null);
+  const tenantId = "a550e8e0-d5e7-4f82-8b9a-123456789012"; // This would come from auth context
 
-  const renderStarRating = (rating: number) => {
-    return (
-      <div className="flex items-center">
-        <div className="flex text-yellow-400">
-          {[...Array(5)].map((_, i) => (
-            <Star
-              key={i}
-              size={14}
-              className={i < rating ? "fill-current" : ""}
-            />
-          ))}
-        </div>
-        <span className="ml-2 text-sm text-gray-600">{rating}.0</span>
-      </div>
-    );
-  };
+  const { data: feedback, isLoading } = useQuery({
+    queryKey: ['/api/feedback', tenantId, { limit: 20 }],
+    retry: false,
+  });
 
   if (isLoading) {
     return (
-      <Card className="shadow-sm border border-gray-200">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Recent Feedback</span>
-            <div className="flex space-x-2">
-              <div className="h-8 bg-gray-200 rounded w-16 animate-pulse"></div>
-              <div className="h-8 bg-gray-200 rounded w-16 animate-pulse"></div>
-            </div>
-          </CardTitle>
+          <div className="animate-pulse">
+            <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="animate-pulse">
-                <div className="flex items-center space-x-4 p-4 border-b">
-                  <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
+              <div key={i} className="animate-pulse border rounded-lg p-4">
+                <div className="flex items-center space-x-4">
+                  <div className="h-10 w-10 bg-gray-200 rounded-full"></div>
                   <div className="flex-1">
-                    <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
-                    <div className="h-3 bg-gray-200 rounded w-48"></div>
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
                   </div>
-                  <div className="h-4 bg-gray-200 rounded w-16"></div>
                 </div>
               </div>
             ))}
@@ -69,116 +43,210 @@ export default function RecentFeedback() {
     );
   }
 
+  const getRatingColor = (rating: number) => {
+    if (rating >= 4) return 'text-green-600';
+    if (rating >= 3) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getRatingBadge = (rating: number) => {
+    if (rating >= 4) return 'default';
+    if (rating >= 3) return 'secondary';
+    return 'destructive';
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) return `${diffInDays}d ago`;
+    
+    return date.toLocaleDateString();
+  };
+
   return (
-    <Card className="shadow-sm border border-gray-200">
+    <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Recent Feedback</span>
-          <div className="flex space-x-2">
-            <Button variant="outline" size="sm">
-              <MessageSquare className="mr-1 h-4 w-4" />
-              Filter
-            </Button>
-            <Button variant="outline" size="sm">
-              <Eye className="mr-1 h-4 w-4" />
-              Export
-            </Button>
-          </div>
+        <CardTitle className="flex items-center gap-2">
+          <MessageSquare className="h-5 w-5 text-blue-600" />
+          Recent Feedback
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Customer</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Rating</TableHead>
-                <TableHead>Feedback</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {!Array.isArray(feedback) || feedback.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                    <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>No feedback responses yet</p>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                Array.isArray(feedback) ? feedback.map((item: any) => (
-                  <TableRow key={item.id} className="hover:bg-gray-50">
-                    <TableCell>
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                            <User className="text-gray-500 w-4 h-4" />
-                          </div>
+        {!Array.isArray(feedback) || feedback.length === 0 ? (
+          <div className="text-center py-8">
+            <MessageSquare className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+            <p className="text-gray-500 font-medium">No feedback yet</p>
+            <p className="text-sm text-gray-400">Customer feedback will appear here once collected</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {feedback.map((item: any, index: number) => (
+              <div
+                key={item.id}
+                className="border rounded-lg p-4 transition-all hover:shadow-md cursor-pointer"
+                onClick={() => setShowDetails(showDetails === item.id ? null : item.id)}
+                data-testid={`feedback-${index}`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>
+                        {item.customerName?.charAt(0)?.toUpperCase() || 'A'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-medium text-gray-900">
+                          {item.customerName || 'Anonymous Customer'}
+                        </h4>
+                        <Badge variant={getRatingBadge(item.overallRating)}>
+                          <Star className="h-3 w-3 mr-1" />
+                          {item.overallRating}/5
+                        </Badge>
+                      </div>
+                      
+                      {item.feedbackText && (
+                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                          {item.feedbackText}
+                        </p>
+                      )}
+                      
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>{formatTimeAgo(item.createdAt)}</span>
                         </div>
-                        <div className="ml-3">
-                          <div className="text-sm font-medium text-gray-900">
-                            {item.customerName || "Anonymous"}
+                        {item.qrCodeId && (
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            <span>QR Code</span>
                           </div>
+                        )}
+                        {item.voiceRecordingUrl && (
+                          <div className="flex items-center gap-1">
+                            <Play className="h-3 w-3" />
+                            <span>Voice</span>
+                          </div>
+                        )}
+                        {item.imageUrls && item.imageUrls.length > 0 && (
+                          <div className="flex items-center gap-1">
+                            <ImageIcon className="h-3 w-3" />
+                            <span>{item.imageUrls.length} image(s)</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <div className={`flex items-center space-x-1 ${getRatingColor(item.overallRating)}`}>
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`h-4 w-4 ${
+                            i < item.overallRating ? 'fill-current' : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded Details */}
+                {showDetails === item.id && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h5 className="font-medium text-sm mb-2">Contact Information</h5>
+                        <div className="space-y-1 text-sm text-gray-600">
                           {item.customerEmail && (
-                            <div className="text-sm text-gray-500">{item.customerEmail}</div>
+                            <p>Email: {item.customerEmail}</p>
+                          )}
+                          {item.customerPhone && (
+                            <p>Phone: {item.customerPhone}</p>
                           )}
                         </div>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-gray-900">Main Location</div>
-                      <div className="text-sm text-gray-500">
-                        {item.qrCodeId ? "QR Code" : "Direct"}
+                      
+                      <div>
+                        <h5 className="font-medium text-sm mb-2">Feedback Details</h5>
+                        <div className="space-y-1 text-sm text-gray-600">
+                          <p>Rating: {item.overallRating}/5</p>
+                          {item.responseTime && (
+                            <p>Response Time: {item.responseTime}s</p>
+                          )}
+                          {item.sentiment && (
+                            <Badge variant="outline" className="text-xs">
+                              {item.sentiment}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {renderStarRating(item.overallRating)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-gray-900 max-w-xs truncate">
-                        {item.feedbackText || "No text feedback"}
+                    </div>
+                    
+                    {/* Multimedia Content */}
+                    <div className="mt-4 space-y-3">
+                      {item.voiceRecordingUrl && (
+                        <div>
+                          <h5 className="font-medium text-sm mb-2">Voice Recording</h5>
+                          <audio controls className="w-full max-w-md">
+                            <source src={item.voiceRecordingUrl} type="audio/mpeg" />
+                            Your browser does not support the audio element.
+                          </audio>
+                        </div>
+                      )}
+                      
+                      {item.imageUrls && item.imageUrls.length > 0 && (
+                        <div>
+                          <h5 className="font-medium text-sm mb-2">Images</h5>
+                          <div className="flex gap-2 flex-wrap">
+                            {item.imageUrls.map((url, imgIndex) => (
+                              <img
+                                key={imgIndex}
+                                src={url}
+                                alt={`Feedback image ${imgIndex + 1}`}
+                                className="h-20 w-20 object-cover rounded border"
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Custom Fields */}
+                    {item.customFields && Object.keys(item.customFields).length > 0 && (
+                      <div className="mt-4">
+                        <h5 className="font-medium text-sm mb-2">Additional Responses</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {Object.entries(item.customFields).map(([key, value]) => (
+                            <div key={key} className="text-sm">
+                              <span className="font-medium text-gray-700">{key}:</span>
+                              <span className="ml-2 text-gray-600">{String(value)}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="flex items-center mt-1 space-x-2">
-                        {item.voiceRecordingUrl && (
-                          <Badge variant="secondary" className="text-xs">
-                            <Mic className="mr-1 w-3 h-3" />
-                            Voice
-                          </Badge>
-                        )}
-                        {item.imageUrls && item.imageUrls.length > 0 && (
-                          <Badge variant="secondary" className="text-xs">
-                            <Image className="mr-1 w-3 h-3" />
-                            Photo
-                          </Badge>
-                        )}
-                        {item.customFields && Object.keys(item.customFields).length > 0 && (
-                          <Badge variant="outline" className="text-xs">
-                            Custom Fields
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-500">
-                      {new Date(item.createdAt).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button variant="link" size="sm">
-                          View
-                        </Button>
-                        <Button variant="link" size="sm">
-                          Respond
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )) : null
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {feedback && feedback.length > 0 && (
+          <div className="mt-6 text-center">
+            <Button variant="outline" size="sm" data-testid="button-view-all-feedback">
+              View All Feedback
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

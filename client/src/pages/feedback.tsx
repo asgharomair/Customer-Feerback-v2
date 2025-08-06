@@ -22,6 +22,9 @@ export default function FeedbackPage() {
     try {
       await apiRequest(`/api/qr-codes/${qrCodeId}/scan`, {
         method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
           userAgent: navigator.userAgent,

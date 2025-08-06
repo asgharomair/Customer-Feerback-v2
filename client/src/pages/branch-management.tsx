@@ -1,128 +1,121 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, MapPin, QrCode, Edit, Trash2, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { 
+  Plus, 
+  MapPin, 
+  Edit, 
+  Trash2, 
+  QrCode, 
+  BarChart3,
+  Users,
+  Star,
+  TrendingUp,
+  Building
+} from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import QRCode from "qrcode";
 
-// Location form schema
 const locationSchema = z.object({
   name: z.string().min(1, "Location name is required"),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  zipCode: z.string().optional(),
-  phone: z.string().optional(),
-  email: z.string().email().optional().or(z.literal("")),
+  description: z.string().optional(),
+  address: z.object({
+    street: z.string().min(1, "Street address is required"),
+    city: z.string().min(1, "City is required"),
+    state: z.string().min(1, "State is required"),
+    zipCode: z.string().min(1, "ZIP code is required"),
+    country: z.string().min(1, "Country is required"),
+  }),
+  contactInfo: z.object({
+    phone: z.string().optional(),
+    email: z.string().email("Valid email required").optional().or(z.literal("")),
+    website: z.string().url("Valid URL required").optional().or(z.literal("")),
+  }),
+  operatingHours: z.string().optional(),
+  capacity: z.number().min(1, "Capacity must be at least 1").optional(),
+  isActive: z.boolean().default(true),
 });
 
-type LocationFormData = z.infer<typeof locationSchema>;
+type LocationData = z.infer<typeof locationSchema>;
 
-interface BranchManagementProps {
-  tenantId?: string;
-}
-
-// Get tenant ID from URL params if not provided
-function useTenantId(providedTenantId?: string): string {
-  const urlParams = new URLSearchParams(window.location.search);
-  return providedTenantId || urlParams.get('tenantId') || 'a550e8e0-d5e7-4f82-8b9a-123456789012';
-}
-
-export default function BranchManagement({ tenantId: providedTenantId }: BranchManagementProps) {
-  const tenantId = useTenantId(providedTenantId);
-  const [isAddingLocation, setIsAddingLocation] = useState(false);
-  const [editingLocation, setEditingLocation] = useState<any>(null);
-  const [generatingQR, setGeneratingQR] = useState<string | null>(null);
-  
-  const { toast } = useToast();
+export default function BranchManagement() {
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<any | null>(null);
+  const tenantId = "a550e8e0-d5e7-4f82-8b9a-123456789012"; // This would come from auth context
   const queryClient = useQueryClient();
 
-  // Fetch locations
-  const { data: locations, isLoading } = useQuery({
-    queryKey: [`/api/locations/${tenantId}`],
-  });
-
-  // Fetch tenant info for branding
-  const { data: tenant } = useQuery({
-    queryKey: [`/api/tenants/${tenantId}`],
-  });
-
-  const form = useForm<LocationFormData>({
+  const form = useForm<LocationData>({
     resolver: zodResolver(locationSchema),
     defaultValues: {
       name: "",
-      address: "",
-      city: "",
-      state: "",
-      zipCode: "",
-      phone: "",
-      email: "",
+      description: "",
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        country: "United States",
+      },
+      contactInfo: {
+        phone: "",
+        email: "",
+        website: "",
+      },
+      operatingHours: "",
+      capacity: undefined,
+      isActive: true,
     },
+  });
+
+  // Fetch locations
+  const { data: locations, isLoading } = useQuery({
+    queryKey: ['/api/locations', tenantId],
+    retry: false,
+  });
+
+  // Fetch analytics for each location
+  const { data: analytics } = useQuery({
+    queryKey: ['/api/analytics/locations', tenantId],
+    retry: false,
   });
 
   // Create location mutation
   const createLocation = useMutation({
-    mutationFn: async (data: LocationFormData) => {
-      const response = await fetch("/api/locations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...data,
-          tenantId,
-        }),
+    mutationFn: async (data: LocationData) => {
+      return await apiRequest('POST', '/api/locations', {
+        ...data,
+        tenantId,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to create location');
-      }
-
-      return await response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Location Added",
-        description: "New location has been created successfully.",
-      });
-      queryClient.invalidateQueries({ queryKey: [`/api/locations/${tenantId}`] });
-      setIsAddingLocation(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/locations', tenantId] });
+      setShowCreateDialog(false);
       form.reset();
     },
   });
 
   // Update location mutation
   const updateLocation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: LocationFormData }) => {
-      const response = await fetch(`/api/locations/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update location');
-      }
-
-      return await response.json();
+    mutationFn: async ({ id, data }: { id: string; data: LocationData }) => {
+      return await apiRequest('PUT', `/api/locations/${id}`, data);
     },
     onSuccess: () => {
-      toast({
-        title: "Location Updated",
-        description: "Location details have been updated successfully.",
-      });
-      queryClient.invalidateQueries({ queryKey: [`/api/locations/${tenantId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/locations', tenantId] });
       setEditingLocation(null);
       form.reset();
     },
@@ -131,155 +124,241 @@ export default function BranchManagement({ tenantId: providedTenantId }: BranchM
   // Delete location mutation
   const deleteLocation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/locations/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete location');
-      }
-
-      return await response.json();
+      return await apiRequest('DELETE', `/api/locations/${id}`);
     },
     onSuccess: () => {
-      toast({
-        title: "Location Deleted",
-        description: "Location has been removed successfully.",
-      });
-      queryClient.invalidateQueries({ queryKey: [`/api/locations/${tenantId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/locations', tenantId] });
     },
   });
 
-  // Generate QR Code for location
-  const generateQRCode = async (location: any) => {
-    setGeneratingQR(location.id);
-    
-    try {
-      // Create QR code entry in database
-      const response = await fetch("/api/qr-codes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          tenantId,
-          locationId: location.id,
-          identifier: `Location-${location.name}`,
-          section: "Main",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create QR code entry');
-      }
-
-      const qrCodeResponse = await response.json();
-
-      // Generate QR code image
-      const feedbackUrl = `${window.location.origin}/feedback?t=${tenantId}&l=${location.id}&q=${qrCodeResponse.id}`;
-      const qrCodeDataUrl = await QRCode.toDataURL(feedbackUrl, {
-        width: 512,
-        margin: 2,
-        color: {
-          dark: tenant?.brandColors?.primary || '#000000',
-          light: tenant?.brandColors?.background1 || '#FFFFFF',
-        },
-      });
-
-      // Create download link
-      const link = document.createElement('a');
-      link.href = qrCodeDataUrl;
-      link.download = `${location.name}-QR-Code.png`;
-      link.click();
-
-      toast({
-        title: "QR Code Generated",
-        description: `QR code for ${location.name} has been downloaded.`,
-      });
-
-      queryClient.invalidateQueries({ queryKey: [`/api/qr-codes/${tenantId}`] });
-    } catch (error) {
-      console.error('QR generation error:', error);
-      toast({
-        title: "Generation Failed",
-        description: "Could not generate QR code. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setGeneratingQR(null);
-    }
+  const handleCreateLocation = () => {
+    setEditingLocation(null);
+    form.reset();
+    setShowCreateDialog(true);
   };
 
-  const onSubmit = async (data: LocationFormData) => {
-    if (editingLocation) {
-      await updateLocation.mutateAsync({ id: editingLocation.id, data });
-    } else {
-      await createLocation.mutateAsync(data);
-    }
-  };
-
-  const handleEdit = (location: any) => {
+  const handleEditLocation = (location: any) => {
     setEditingLocation(location);
     form.reset({
       name: location.name,
-      address: location.address || "",
-      city: location.city || "",
-      state: location.state || "",
-      zipCode: location.zipCode || "",
-      phone: location.phone || "",
-      email: location.email || "",
+      description: location.description,
+      address: location.address,
+      contactInfo: location.contactInfo,
+      operatingHours: location.operatingHours,
+      capacity: location.capacity,
+      isActive: location.isActive,
     });
+    setShowCreateDialog(true);
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
-      await deleteLocation.mutateAsync(id);
+  const onSubmit = (data: LocationData) => {
+    if (editingLocation) {
+      updateLocation.mutate({ id: editingLocation.id, data });
+    } else {
+      createLocation.mutate(data);
     }
+  };
+
+  const getLocationAnalytics = (locationId: string) => {
+    if (!Array.isArray(analytics)) return null;
+    return analytics.find((a: any) => a.locationId === locationId);
   };
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-48 bg-gray-100 rounded animate-pulse"></div>
-          ))}
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-white rounded-lg p-6 h-64">
+                  <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Branch Management</h1>
-          <p className="text-gray-600">Manage your business locations and generate QR codes</p>
-        </div>
-        
-        <Dialog open={isAddingLocation || !!editingLocation} onOpenChange={(open) => {
-          if (!open) {
-            setIsAddingLocation(false);
-            setEditingLocation(null);
-            form.reset();
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setIsAddingLocation(true)}>
-              <Plus className="w-4 h-4 mr-2" />
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Location Management</h1>
+              <p className="text-gray-600">Manage your business locations and track their performance</p>
+            </div>
+            <Button onClick={handleCreateLocation} data-testid="button-add-location">
+              <Plus className="h-4 w-4 mr-2" />
               Add Location
             </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {editingLocation ? "Edit Location" : "Add New Location"}
-              </DialogTitle>
-            </DialogHeader>
-            
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          </div>
+        </div>
+      </div>
+
+      {/* Locations Grid */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {!Array.isArray(locations) || locations.length === 0 ? (
+          <Card className="text-center py-16">
+            <CardContent>
+              <Building className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No locations yet</h3>
+              <p className="text-gray-600 mb-6">
+                Start by adding your first business location to begin collecting feedback.
+              </p>
+              <Button onClick={handleCreateLocation}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Your First Location
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {locations.map((location: any) => {
+              const locationAnalytics = getLocationAnalytics(location.id);
+              
+              return (
+                <Card key={location.id} className="hover:shadow-lg transition-shadow" data-testid={`location-card-${location.id}`}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="flex items-center gap-2 mb-2">
+                          <MapPin className="h-5 w-5 text-blue-600" />
+                          {location.name}
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={location.isActive ? "default" : "secondary"}>
+                            {location.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                          {locationAnalytics?.qrCodesCount && (
+                            <Badge variant="outline" className="text-xs">
+                              {locationAnalytics.qrCodesCount} QR Codes
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditLocation(location)}
+                          data-testid={`button-edit-${location.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteLocation.mutate(location.id)}
+                          data-testid={`button-delete-${location.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {/* Address */}
+                      <div>
+                        <div className="text-sm text-gray-600">
+                          {location.address.street}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {location.address.city}, {location.address.state} {location.address.zipCode}
+                        </div>
+                      </div>
+
+                      {/* Contact Info */}
+                      {(location.contactInfo.phone || location.contactInfo.email) && (
+                        <div className="space-y-1">
+                          {location.contactInfo.phone && (
+                            <div className="text-sm text-gray-600">📞 {location.contactInfo.phone}</div>
+                          )}
+                          {location.contactInfo.email && (
+                            <div className="text-sm text-gray-600">✉️ {location.contactInfo.email}</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Operating Hours */}
+                      {location.operatingHours && (
+                        <div className="text-sm text-gray-600">
+                          🕒 {location.operatingHours}
+                        </div>
+                      )}
+
+                      {/* Analytics Summary */}
+                      {locationAnalytics && (
+                        <div className="border-t pt-4 mt-4">
+                          <div className="grid grid-cols-2 gap-4 text-center">
+                            <div>
+                              <div className="flex items-center justify-center gap-1 text-xs text-gray-500 mb-1">
+                                <BarChart3 className="h-3 w-3" />
+                                Responses
+                              </div>
+                              <div className="font-semibold">{locationAnalytics.totalResponses || 0}</div>
+                            </div>
+                            <div>
+                              <div className="flex items-center justify-center gap-1 text-xs text-gray-500 mb-1">
+                                <Star className="h-3 w-3" />
+                                Avg Rating
+                              </div>
+                              <div className="font-semibold">
+                                {locationAnalytics.averageRating ? `${locationAnalytics.averageRating.toFixed(1)}/5` : "N/A"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 pt-2">
+                        <Button variant="outline" size="sm" className="flex-1" data-testid={`button-qr-codes-${location.id}`}>
+                          <QrCode className="h-4 w-4 mr-1" />
+                          QR Codes
+                        </Button>
+                        <Button variant="outline" size="sm" className="flex-1" data-testid={`button-analytics-${location.id}`}>
+                          <TrendingUp className="h-4 w-4 mr-1" />
+                          Analytics
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Create/Edit Location Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingLocation ? "Edit Location" : "Add New Location"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingLocation 
+                ? "Update the location information below."
+                : "Add a new business location where customers can provide feedback."
+              }
+            </DialogDescription>
+          </DialogHeader>
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Basic Information</h3>
                 <FormField
                   control={form.control}
                   name="name"
@@ -287,213 +366,197 @@ export default function BranchManagement({ tenantId: providedTenantId }: BranchM
                     <FormItem>
                       <FormLabel>Location Name *</FormLabel>
                       <FormControl>
-                        <Input placeholder="Main Branch, Downtown Store..." {...field} />
+                        <Input placeholder="Downtown Store, Main Branch, etc." {...field} data-testid="input-location-name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={form.control}
-                  name="address"
+                  name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Address</FormLabel>
+                      <FormLabel>Description (Optional)</FormLabel>
                       <FormControl>
-                        <Textarea 
-                          placeholder="123 Main Street"
-                          className="min-h-[80px]"
-                          {...field} 
-                        />
+                        <Textarea placeholder="Brief description of this location..." {...field} data-testid="textarea-location-description" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="city"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>City</FormLabel>
-                        <FormControl>
-                          <Input placeholder="New York" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="state"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>State</FormLabel>
-                        <FormControl>
-                          <Input placeholder="NY" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="zipCode"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>ZIP Code</FormLabel>
-                        <FormControl>
-                          <Input placeholder="10001" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Phone</FormLabel>
-                        <FormControl>
-                          <Input placeholder="(555) 123-4567" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
+              {/* Address */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Address</h3>
                 <FormField
                   control={form.control}
-                  name="email"
+                  name="address.street"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>Street Address *</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="location@company.com" {...field} />
+                        <Input placeholder="123 Main Street" {...field} data-testid="input-location-street" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setIsAddingLocation(false);
-                      setEditingLocation(null);
-                      form.reset();
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={createLocation.isPending || updateLocation.isPending}
-                  >
-                    {editingLocation ? "Update" : "Create"} Location
-                  </Button>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="address.city"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>City *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="City" {...field} data-testid="input-location-city" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="address.state"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>State *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="State" {...field} data-testid="input-location-state" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="address.zipCode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>ZIP Code *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="12345" {...field} data-testid="input-location-zip" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
+              </div>
 
-      {locations && locations.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-12">
-            <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No locations yet</h3>
-            <p className="text-gray-500 mb-4">
-              Add your first business location to start collecting feedback.
-            </p>
-            <Button onClick={() => setIsAddingLocation(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add First Location
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {locations?.map((location: any) => (
-            <Card key={location.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between">
-                  <span className="flex items-center">
-                    <MapPin className="w-5 h-5 mr-2 text-primary" />
-                    {location.name}
-                  </span>
-                  <div className="flex space-x-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(location)}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDelete(location.id, location.name)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm text-gray-600 mb-4">
-                  {location.address && (
-                    <p>{location.address}</p>
-                  )}
-                  {(location.city || location.state) && (
-                    <p>
-                      {location.city}{location.city && location.state && ", "}{location.state} {location.zipCode}
-                    </p>
-                  )}
-                  {location.phone && (
-                    <p>📞 {location.phone}</p>
-                  )}
-                  {location.email && (
-                    <p>✉️ {location.email}</p>
-                  )}
+              {/* Contact Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Contact Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="contactInfo.phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="+1 (555) 123-4567" {...field} data-testid="input-location-phone" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="contactInfo.email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="location@business.com" type="email" {...field} data-testid="input-location-email" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
+                <FormField
+                  control={form.control}
+                  name="contactInfo.website"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Website (Optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="https://location.business.com" {...field} data-testid="input-location-website" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
+              {/* Additional Details */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Additional Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="operatingHours"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Operating Hours (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Mon-Fri 9AM-6PM" {...field} data-testid="input-operating-hours" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="capacity"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Capacity (Optional)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            placeholder="50" 
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                            value={field.value || ''}
+                            data-testid="input-location-capacity"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex justify-end space-x-2 pt-6 border-t">
                 <Button
-                  onClick={() => generateQRCode(location)}
-                  disabled={generatingQR === location.id}
-                  className="w-full"
+                  type="button"
                   variant="outline"
+                  onClick={() => setShowCreateDialog(false)}
+                  data-testid="button-cancel"
                 >
-                  {generatingQR === location.id ? (
-                    <div className="flex items-center space-x-2">
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                      <span>Generating...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <QrCode className="w-4 h-4 mr-2" />
-                      Generate QR Code
-                    </>
-                  )}
+                  Cancel
                 </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                <Button
+                  type="submit"
+                  disabled={createLocation.isPending || updateLocation.isPending}
+                  data-testid="button-save-location"
+                >
+                  {editingLocation 
+                    ? (updateLocation.isPending ? "Updating..." : "Update Location")
+                    : (createLocation.isPending ? "Creating..." : "Create Location")
+                  }
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,62 +1,151 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, MessageSquare } from "lucide-react";
+import { Bell, Building, MapPin, QrCode, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-
-const DEMO_TENANT_ID = "a550e8e0-d5e7-4f82-8b9a-123456789012";
+import { Link } from "wouter";
 
 export default function DashboardHeader() {
-  const { data: tenant } = useQuery({
-    queryKey: ['/api/tenants', DEMO_TENANT_ID],
+  const [selectedTenant] = useState("a550e8e0-d5e7-4f82-8b9a-123456789012"); // This would come from auth context
+
+  const { data: tenant, isLoading } = useQuery({
+    queryKey: ['/api/tenants', selectedTenant],
+    retry: false,
   });
 
   const { data: alerts } = useQuery({
-    queryKey: ['/api/alerts', DEMO_TENANT_ID],
-    refetchInterval: 30000, // Refresh every 30 seconds
+    queryKey: ['/api/alerts', selectedTenant],
+    retry: false,
   });
 
-  const unreadAlerts = Array.isArray(alerts) ? alerts.filter((alert: any) => !alert.isRead) : [];
+  const unreadAlerts = Array.isArray(alerts) ? alerts.filter((alert: any) => !alert.isRead)?.length || 0 : 0;
+
+  if (isLoading) {
+    return (
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center space-x-4">
+              <div className="animate-pulse bg-gray-200 h-8 w-32 rounded"></div>
+            </div>
+            <div className="animate-pulse bg-gray-200 h-8 w-24 rounded"></div>
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
-    <header className="bg-white border-b border-gray-200">
+    <header className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-4">
+        <div className="flex justify-between items-center py-6">
           <div className="flex items-center space-x-4">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <MessageSquare className="text-white" size={24} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">FeedbackPlatform</h1>
-              <p className="text-sm text-gray-500">
-                {tenant && typeof tenant === 'object' && 'companyName' in tenant ? tenant.companyName : "Demo Restaurant"}
-              </p>
+            <div className="flex items-center space-x-3">
+              {tenant?.logoUrl && (
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={tenant.logoUrl} alt={tenant.brandName || 'Logo'} />
+                  <AvatarFallback>
+                    {tenant.brandName?.charAt(0)?.toUpperCase() || 'B'}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {tenant?.brandName || "Dashboard"}
+                </h1>
+                <div className="flex items-center space-x-2 text-sm text-gray-500">
+                  <Building className="h-4 w-4" />
+                  <span>{tenant?.industry || "Business"}</span>
+                  <Badge variant="outline" className="text-xs">
+                    {tenant?.subscription || "Free"}
+                  </Badge>
+                </div>
+              </div>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-4">
-            {/* Real-time Alert Badge */}
-            <div className="relative">
-              <Button variant="ghost" size="sm" className="p-2">
-                <Bell size={20} />
-                {unreadAlerts.length > 0 && (
-                  <Badge 
-                    variant="destructive" 
-                    className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
-                  >
-                    {unreadAlerts.length}
-                  </Badge>
+            {/* Quick Actions */}
+            <div className="flex items-center space-x-2">
+              <Link href="/branch-management">
+                <Button variant="outline" size="sm" data-testid="button-locations">
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Locations
+                </Button>
+              </Link>
+              <Link href="/qr-management">
+                <Button variant="outline" size="sm" data-testid="button-qr-codes">
+                  <QrCode className="h-4 w-4 mr-2" />
+                  QR Codes
+                </Button>
+              </Link>
+            </div>
+
+            {/* Notifications */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="relative" data-testid="button-notifications">
+                  <Bell className="h-4 w-4" />
+                  {unreadAlerts > 0 && (
+                    <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 text-xs flex items-center justify-center">
+                      {unreadAlerts}
+                    </Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {Array.isArray(alerts) && alerts.slice(0, 5).map((alert: any) => (
+                  <DropdownMenuItem key={alert.id} className="flex-col items-start p-4">
+                    <div className="flex items-center justify-between w-full">
+                      <span className="font-medium">{alert.title}</span>
+                      <Badge variant={alert.severity === 'critical' ? 'destructive' : 'secondary'}>
+                        {alert.severity}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">{alert.message}</p>
+                    <span className="text-xs text-gray-400 mt-2">
+                      {new Date(alert.createdAt).toLocaleDateString()}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+                {(!Array.isArray(alerts) || alerts.length === 0) && (
+                  <DropdownMenuItem disabled>No new notifications</DropdownMenuItem>
                 )}
-              </Button>
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              <img 
-                src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=100&h=100" 
-                alt="Profile" 
-                className="w-8 h-8 rounded-full object-cover"
-              />
-              <span className="text-sm font-medium text-gray-700">John Doe</span>
-            </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* User Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-10 w-10 rounded-full" data-testid="button-user-menu">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src="" alt="User" />
+                    <AvatarFallback>
+                      <Users className="h-4 w-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>Settings</DropdownMenuItem>
+                <DropdownMenuItem>Support</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>Sign out</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
