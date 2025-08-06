@@ -207,6 +207,34 @@ export const alertNotifications = pgTable("alert_notifications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Multimedia files table for voice recordings and images
+export const multimediaFiles = pgTable("multimedia_files", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").references(() => tenants.id).notNull(),
+  feedbackId: uuid("feedback_id").references(() => feedbackResponses.id),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  filePath: varchar("file_path", { length: 500 }).notNull(),
+  fileType: varchar("file_type", { length: 50 }).notNull(), // voice, image
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  fileSize: integer("file_size").notNull(), // in bytes
+  originalFileName: varchar("original_file_name", { length: 255 }),
+  uploadStatus: varchar("upload_status", { length: 50 }).default("pending"), // pending, completed, failed
+  isPublic: boolean("is_public").default(false),
+  isDeleted: boolean("is_deleted").default(false), // soft delete
+  deletedAt: timestamp("deleted_at"),
+  expiresAt: timestamp("expires_at"), // for temporary files
+  metadata: jsonb("metadata"), // additional file metadata
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("IDX_multimedia_files_tenant_id").on(table.tenantId),
+  index("IDX_multimedia_files_feedback_id").on(table.feedbackId),
+  index("IDX_multimedia_files_file_type").on(table.fileType),
+  index("IDX_multimedia_files_upload_status").on(table.uploadStatus),
+  index("IDX_multimedia_files_created_at").on(table.createdAt),
+  index("IDX_multimedia_files_tenant_type").on(table.tenantId, table.fileType),
+]);
+
 // Define relations
 export const tenantRelations = relations(tenants, ({ many }) => ({
   users: many(users),
@@ -215,6 +243,7 @@ export const tenantRelations = relations(tenants, ({ many }) => ({
   qrCodes: many(qrCodes),
   feedbackResponses: many(feedbackResponses),
   alertRules: many(alertRules),
+  multimediaFiles: many(multimediaFiles),
 }));
 
 export const userRelations = relations(users, ({ one }) => ({
@@ -250,7 +279,7 @@ export const qrCodeRelations = relations(qrCodes, ({ one, many }) => ({
   analytics: many(qrAnalytics),
 }));
 
-export const feedbackResponseRelations = relations(feedbackResponses, ({ one }) => ({
+export const feedbackResponseRelations = relations(feedbackResponses, ({ one, many }) => ({
   tenant: one(tenants, {
     fields: [feedbackResponses.tenantId],
     references: [tenants.id],
@@ -263,6 +292,7 @@ export const feedbackResponseRelations = relations(feedbackResponses, ({ one }) 
     fields: [feedbackResponses.qrCodeId],
     references: [qrCodes.id],
   }),
+  multimediaFiles: many(multimediaFiles),
 }));
 
 export const surveyTemplateRelations = relations(surveyTemplates, ({ one }) => ({
@@ -300,6 +330,17 @@ export const alertNotificationRelations = relations(alertNotifications, ({ one }
   qrCode: one(qrCodes, {
     fields: [feedbackResponses.qrCodeId],
     references: [qrCodes.id],
+  }),
+}));
+
+export const multimediaFileRelations = relations(multimediaFiles, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [multimediaFiles.tenantId],
+    references: [tenants.id],
+  }),
+  feedback: one(feedbackResponses, {
+    fields: [multimediaFiles.feedbackId],
+    references: [feedbackResponses.id],
   }),
 }));
 
@@ -351,6 +392,12 @@ export const insertAlertNotificationSchema = createInsertSchema(alertNotificatio
   createdAt: true,
 });
 
+export const insertMultimediaFileSchema = createInsertSchema(multimediaFiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
@@ -375,5 +422,8 @@ export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
 
 export type AlertNotification = typeof alertNotifications.$inferSelect;
 export type InsertAlertNotification = z.infer<typeof insertAlertNotificationSchema>;
+
+export type MultimediaFile = typeof multimediaFiles.$inferSelect;
+export type InsertMultimediaFile = z.infer<typeof insertMultimediaFileSchema>;
 
 export type QrAnalytic = typeof qrAnalytics.$inferSelect;

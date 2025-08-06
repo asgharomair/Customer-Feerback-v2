@@ -1,0 +1,953 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FeedbackPlatform - Multi-Industry Customer Feedback SaaS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        },
+                        success: {
+                            50: '#ecfdf5',
+                            500: '#10b981',
+                            600: '#059669',
+                        },
+                        warning: {
+                            50: '#fffbeb',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                        },
+                        danger: {
+                            50: '#fef2f2',
+                            500: '#ef4444',
+                            600: '#dc2626',
+                        }
+                    }
+                }
+            }
+        };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-50 font-sans antialiased">
+    <!-- Navigation Tabs for Demo Views -->
+    <div class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex space-x-8">
+                <button onclick="showView('business-dashboard')" class="px-4 py-3 text-sm font-medium text-gray-900 border-b-2 border-primary-500 bg-primary-50">
+                    Business Dashboard
+                </button>
+                <button onclick="showView('customer-feedback')" class="px-4 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">
+                    Customer Feedback (Mobile)
+                </button>
+                <button onclick="showView('survey-builder')" class="px-4 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">
+                    Survey Builder
+                </button>
+                <button onclick="showView('qr-management')" class="px-4 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">
+                    QR Code Management
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Business Dashboard View -->
+    <div id="business-dashboard" class="view-container pt-16">
+        <!-- @COMPONENT: DashboardHeader -->
+        <header class="bg-white border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-10 h-10 bg-primary-500 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-comments text-white"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">FeedbackPlatform</h1>
+                            <p class="text-sm text-gray-500" data-bind="tenant.company_name">Acme Restaurant Group</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <!-- Real-time Alert Badge -->
+                        <div class="relative">
+                            <button class="p-2 text-gray-400 hover:text-gray-500 relative">
+                                <i class="fas fa-bell text-xl"></i>
+                                <span class="absolute -top-1 -right-1 w-5 h-5 bg-danger-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center space-x-3">
+                            <!-- A professional headshot of a smiling business manager -->
+                            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=100&h=100" alt="Profile" class="w-8 h-8 rounded-full object-cover">
+                            <span class="text-sm font-medium text-gray-700" data-bind="user.first_name">John Doe</span>
+                            <i class="fas fa-chevron-down text-gray-400"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <!-- @END_COMPONENT: DashboardHeader -->
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- @COMPONENT: MetricsOverview -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-star text-primary-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500">Average Rating</div>
+                            <div class="text-2xl font-bold text-gray-900" data-bind="metrics.average_rating">4.2</div>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <div class="flex items-center text-sm">
+                            <span class="text-success-600 font-medium">+0.3</span>
+                            <span class="text-gray-500 ml-1">vs last month</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-success-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-comment-dots text-success-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500">Total Responses</div>
+                            <div class="text-2xl font-bold text-gray-900" data-bind="metrics.total_responses">1,247</div>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <div class="flex items-center text-sm">
+                            <span class="text-success-600 font-medium">+12%</span>
+                            <span class="text-gray-500 ml-1">vs last month</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-warning-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-exclamation-triangle text-warning-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500">Critical Alerts</div>
+                            <div class="text-2xl font-bold text-gray-900" data-bind="metrics.critical_alerts">3</div>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <div class="flex items-center text-sm">
+                            <span class="text-danger-600 font-medium">Needs attention</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-qrcode text-primary-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500">QR Scans Today</div>
+                            <div class="text-2xl font-bold text-gray-900" data-bind="metrics.qr_scans_today">89</div>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <div class="flex items-center text-sm">
+                            <span class="text-success-600 font-medium">+8%</span>
+                            <span class="text-gray-500 ml-1">vs yesterday</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- @END_COMPONENT: MetricsOverview -->
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- @COMPONENT: FeedbackChart -->
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-lg font-semibold text-gray-900">Feedback Trends</h3>
+                            <div class="flex space-x-2">
+                                <button class="px-3 py-1 text-sm font-medium text-primary-600 bg-primary-50 rounded-md">7 Days</button>
+                                <button class="px-3 py-1 text-sm font-medium text-gray-500 hover:text-gray-700">30 Days</button>
+                                <button class="px-3 py-1 text-sm font-medium text-gray-500 hover:text-gray-700">90 Days</button>
+                            </div>
+                        </div>
+                        <div class="h-80">
+                            <canvas id="feedbackChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <!-- @END_COMPONENT: FeedbackChart -->
+
+                <!-- @COMPONENT: RecentAlerts -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold text-gray-900">Recent Alerts</h3>
+                        <button class="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</button>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <!-- @MAP: alerts.map(alert => ( -->
+                        <div class="flex items-start space-x-3 p-3 bg-danger-50 rounded-lg border border-danger-200">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-danger-100 rounded-full flex items-center justify-center">
+                                    <i class="fas fa-exclamation text-danger-600 text-sm"></i>
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900">Low Rating Alert</p>
+                                <p class="text-sm text-gray-500">Table 12 - Rating: 1/5</p>
+                                <p class="text-xs text-gray-400 mt-1">2 minutes ago</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start space-x-3 p-3 bg-warning-50 rounded-lg border border-warning-200">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-warning-100 rounded-full flex items-center justify-center">
+                                    <i class="fas fa-clock text-warning-600 text-sm"></i>
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900">Service Delay</p>
+                                <p class="text-sm text-gray-500">Multiple complaints about wait time</p>
+                                <p class="text-xs text-gray-400 mt-1">15 minutes ago</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start space-x-3 p-3 bg-primary-50 rounded-lg border border-primary-200">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                                    <i class="fas fa-info text-primary-600 text-sm"></i>
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900">High Volume</p>
+                                <p class="text-sm text-gray-500">Peak feedback period detected</p>
+                                <p class="text-xs text-gray-400 mt-1">1 hour ago</p>
+                            </div>
+                        </div>
+                        <!-- @END_MAP )) -->
+                    </div>
+                </div>
+                <!-- @END_COMPONENT: RecentAlerts -->
+            </div>
+
+            <!-- @COMPONENT: RecentFeedback -->
+            <div class="mt-8">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-semibold text-gray-900">Recent Feedback</h3>
+                            <div class="flex space-x-2">
+                                <button class="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 rounded-md">
+                                    <i class="fas fa-filter mr-1"></i>Filter
+                                </button>
+                                <button class="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 rounded-md">
+                                    <i class="fas fa-download mr-1"></i>Export
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-hidden">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Feedback</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <!-- @MAP: feedback.map(item => ( -->
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="flex-shrink-0">
+                                                <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                                                    <i class="fas fa-user text-gray-500"></i>
+                                                </div>
+                                            </div>
+                                            <div class="ml-3">
+                                                <div class="text-sm font-medium text-gray-900" data-bind="feedback.customer_name">Sarah Johnson</div>
+                                                <div class="text-sm text-gray-500" data-bind="feedback.customer_email">sarah@example.com</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-gray-900" data-bind="feedback.location">Downtown Branch</div>
+                                        <div class="text-sm text-gray-500" data-bind="feedback.table">Table 12</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="flex text-yellow-400">
+                                                <i class="fas fa-star"></i>
+                                                <i class="fas fa-star"></i>
+                                                <i class="fas fa-star"></i>
+                                                <i class="fas fa-star"></i>
+                                                <i class="far fa-star"></i>
+                                            </div>
+                                            <span class="ml-2 text-sm text-gray-600" data-bind="feedback.rating">4.0</span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm text-gray-900 max-w-xs truncate" data-bind="feedback.text">Great food and service, but the wait time was a bit long...</div>
+                                        <div class="flex items-center mt-1 space-x-2">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                <i class="fas fa-microphone mr-1"></i>Voice
+                                            </span>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                                <i class="fas fa-image mr-1"></i>Photo
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-bind="feedback.submitted_at">
+                                        2 hours ago
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button class="text-primary-600 hover:text-primary-900 mr-3">View</button>
+                                        <button class="text-gray-600 hover:text-gray-900">Respond</button>
+                                    </td>
+                                </tr>
+                                <!-- @END_MAP )) -->
+
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="flex-shrink-0">
+                                                <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                                                    <i class="fas fa-user text-gray-500"></i>
+                                                </div>
+                                            </div>
+                                            <div class="ml-3">
+                                                <div class="text-sm font-medium text-gray-900">Mike Chen</div>
+                                                <div class="text-sm text-gray-500">mike@example.com</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-gray-900">Uptown Branch</div>
+                                        <div class="text-sm text-gray-500">Table 8</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="flex text-yellow-400">
+                                                <i class="fas fa-star"></i>
+                                                <i class="fas fa-star"></i>
+                                                <i class="fas fa-star"></i>
+                                                <i class="fas fa-star"></i>
+                                                <i class="fas fa-star"></i>
+                                            </div>
+                                            <span class="ml-2 text-sm text-gray-600">5.0</span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm text-gray-900 max-w-xs truncate">Excellent service and amazing food quality! Will definitely come back.</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        4 hours ago
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button class="text-primary-600 hover:text-primary-900 mr-3">View</button>
+                                        <button class="text-gray-600 hover:text-gray-900">Respond</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- @END_COMPONENT: RecentFeedback -->
+        </div>
+    </div>
+
+    <!-- Customer Feedback Mobile View -->
+    <div id="customer-feedback" class="view-container hidden pt-16">
+        <div class="max-w-md mx-auto bg-white min-h-screen">
+            <!-- Mobile Header -->
+            <div class="bg-gradient-to-r from-primary-500 to-primary-600 px-6 py-8 text-white">
+                <div class="text-center">
+                    <!-- A modern restaurant interior with elegant dining tables -->
+                    <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=300&h=120" alt="Restaurant Interior" class="w-16 h-16 rounded-full mx-auto mb-4 object-cover border-2 border-white/20">
+                    <h1 class="text-xl font-bold" data-bind="location.company_name">Acme Restaurant</h1>
+                    <p class="text-primary-100" data-bind="location.location_name">Downtown Branch - Table 12</p>
+                </div>
+            </div>
+
+            <!-- Feedback Form -->
+            <!-- @COMPONENT: MobileFeedbackForm -->
+            <div class="px-6 py-6">
+                <form data-implementation="Should validate and submit feedback">
+                    <!-- Customer Information -->
+                    <div class="mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Tell us about your experience</h2>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" placeholder="Enter your name" data-bind="form.customer_name">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Email (Optional)</label>
+                                <input type="email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" placeholder="your@email.com" data-bind="form.customer_email">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rating Section -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Overall Rating</label>
+                        <div class="flex justify-center space-x-2 mb-2">
+                            <button type="button" class="star-rating w-12 h-12 text-2xl text-gray-300 hover:text-yellow-400 transition-colors" data-rating="1">
+                                <i class="fas fa-star"></i>
+                            </button>
+                            <button type="button" class="star-rating w-12 h-12 text-2xl text-gray-300 hover:text-yellow-400 transition-colors" data-rating="2">
+                                <i class="fas fa-star"></i>
+                            </button>
+                            <button type="button" class="star-rating w-12 h-12 text-2xl text-gray-300 hover:text-yellow-400 transition-colors" data-rating="3">
+                                <i class="fas fa-star"></i>
+                            </button>
+                            <button type="button" class="star-rating w-12 h-12 text-2xl text-gray-300 hover:text-yellow-400 transition-colors" data-rating="4">
+                                <i class="fas fa-star"></i>
+                            </button>
+                            <button type="button" class="star-rating w-12 h-12 text-2xl text-gray-300 hover:text-yellow-400 transition-colors" data-rating="5">
+                                <i class="fas fa-star"></i>
+                            </button>
+                        </div>
+                        <p class="text-center text-sm text-gray-500">Tap to rate your experience</p>
+                    </div>
+
+                    <!-- Custom Fields Section -->
+                    <div class="mb-6">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Server Name</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" placeholder="Who served you?" data-bind="form.server_name">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Order Number</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" placeholder="Order #123" data-bind="form.order_number">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Feedback Text -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Your Feedback</label>
+                        <textarea rows="4" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" placeholder="Tell us about your experience..." data-bind="form.feedback_text"></textarea>
+                    </div>
+
+                    <!-- Multimedia Upload -->
+                    <div class="mb-6">
+                        <p class="text-sm font-medium text-gray-700 mb-3">Add Voice or Photos</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <!-- Voice Recording -->
+                            <button type="button" class="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-400 transition-colors" onclick="startVoiceRecording()" data-implementation="Should use MediaRecorder API for voice recording">
+                                <i class="fas fa-microphone text-2xl text-gray-400 mb-2"></i>
+                                <span class="text-sm text-gray-600">Record Voice</span>
+                                <span class="text-xs text-gray-500">Up to 2 min</span>
+                            </button>
+                            
+                            <!-- Photo Upload -->
+                            <button type="button" class="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-400 transition-colors" onclick="openCamera()" data-implementation="Should use File API and camera access">
+                                <i class="fas fa-camera text-2xl text-gray-400 mb-2"></i>
+                                <span class="text-sm text-gray-600">Take Photo</span>
+                                <span class="text-xs text-gray-500">Up to 20MB</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="w-full bg-primary-500 hover:bg-primary-600 text-white font-medium py-4 px-6 rounded-lg transition-colors" data-event="click:submitFeedback">
+                        Submit Feedback
+                    </button>
+                </form>
+            </div>
+            <!-- @END_COMPONENT: MobileFeedbackForm -->
+        </div>
+    </div>
+
+    <!-- Survey Builder View -->
+    <div id="survey-builder" class="view-container hidden pt-16">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- @COMPONENT: SurveyBuilder -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900">Survey Builder</h3>
+                        <div class="flex space-x-3">
+                            <button class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                                <i class="fas fa-save mr-2"></i>Save Draft
+                            </button>
+                            <button class="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600">
+                                <i class="fas fa-eye mr-2"></i>Preview
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 p-6">
+                    <!-- Field Types Sidebar -->
+                    <div class="lg:col-span-1">
+                        <h4 class="text-sm font-medium text-gray-900 mb-4">Field Types</h4>
+                        <div class="space-y-2">
+                            <div class="draggable-field p-3 border border-gray-200 rounded-lg cursor-move hover:bg-gray-50" data-field-type="text">
+                                <div class="flex items-center">
+                                    <i class="fas fa-font text-gray-500 mr-3"></i>
+                                    <span class="text-sm font-medium">Text Input</span>
+                                </div>
+                            </div>
+                            
+                            <div class="draggable-field p-3 border border-gray-200 rounded-lg cursor-move hover:bg-gray-50" data-field-type="rating">
+                                <div class="flex items-center">
+                                    <i class="fas fa-star text-gray-500 mr-3"></i>
+                                    <span class="text-sm font-medium">Rating Scale</span>
+                                </div>
+                            </div>
+                            
+                            <div class="draggable-field p-3 border border-gray-200 rounded-lg cursor-move hover:bg-gray-50" data-field-type="dropdown">
+                                <div class="flex items-center">
+                                    <i class="fas fa-chevron-down text-gray-500 mr-3"></i>
+                                    <span class="text-sm font-medium">Dropdown</span>
+                                </div>
+                            </div>
+                            
+                            <div class="draggable-field p-3 border border-gray-200 rounded-lg cursor-move hover:bg-gray-50" data-field-type="textarea">
+                                <div class="flex items-center">
+                                    <i class="fas fa-align-left text-gray-500 mr-3"></i>
+                                    <span class="text-sm font-medium">Text Area</span>
+                                </div>
+                            </div>
+                            
+                            <div class="draggable-field p-3 border border-gray-200 rounded-lg cursor-move hover:bg-gray-50" data-field-type="number">
+                                <div class="flex items-center">
+                                    <i class="fas fa-hashtag text-gray-500 mr-3"></i>
+                                    <span class="text-sm font-medium">Number</span>
+                                </div>
+                            </div>
+                            
+                            <div class="draggable-field p-3 border border-gray-200 rounded-lg cursor-move hover:bg-gray-50" data-field-type="date">
+                                <div class="flex items-center">
+                                    <i class="fas fa-calendar text-gray-500 mr-3"></i>
+                                    <span class="text-sm font-medium">Date</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Form Builder Canvas -->
+                    <div class="lg:col-span-2">
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg min-h-96 p-6" id="form-canvas">
+                            <div class="text-center py-8">
+                                <i class="fas fa-plus-circle text-4xl text-gray-300 mb-4"></i>
+                                <p class="text-gray-500">Drag field types here to build your survey</p>
+                            </div>
+                            
+                            <!-- Example Field -->
+                            <div class="field-item bg-white border border-gray-200 rounded-lg p-4 mb-4 group hover:border-primary-300">
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-sm font-medium text-gray-700">Customer Name</label>
+                                    <div class="opacity-0 group-hover:opacity-100 flex space-x-2">
+                                        <button class="text-gray-400 hover:text-gray-600">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="text-gray-400 hover:text-red-600">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Enter your name" disabled>
+                                <div class="mt-2 flex items-center text-xs text-gray-500">
+                                    <input type="checkbox" class="mr-2" checked disabled>
+                                    <span>Required field</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Field Properties -->
+                    <div class="lg:col-span-1">
+                        <h4 class="text-sm font-medium text-gray-900 mb-4">Field Properties</h4>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Field Label</label>
+                                <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="Enter field label">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Placeholder</label>
+                                <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="Enter placeholder text">
+                            </div>
+                            
+                            <div class="flex items-center">
+                                <input type="checkbox" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                                <label class="ml-2 text-sm text-gray-700">Required field</label>
+                            </div>
+                            
+                            <div class="flex items-center">
+                                <input type="checkbox" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                                <label class="ml-2 text-sm text-gray-700">Show in analytics</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- @END_COMPONENT: SurveyBuilder -->
+        </div>
+    </div>
+
+    <!-- QR Code Management View -->
+    <div id="qr-management" class="view-container hidden pt-16">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- @COMPONENT: QRCodeManagement -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">QR Code Management</h3>
+                            <p class="text-sm text-gray-500">Generate and manage QR codes for your locations</p>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                                <i class="fas fa-download mr-2"></i>Bulk Download
+                            </button>
+                            <button class="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600">
+                                <i class="fas fa-plus mr-2"></i>Generate QR Code
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="p-6">
+                    <!-- Location Selector -->
+                    <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                            <select class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                                <option>Downtown Branch</option>
+                                <option>Uptown Branch</option>
+                                <option>Mall Location</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Table/Bed Number</label>
+                            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" placeholder="e.g., Table 12">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Section (Optional)</label>
+                            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" placeholder="e.g., Patio, VIP">
+                        </div>
+                    </div>
+                    
+                    <!-- QR Codes Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        <!-- @MAP: qrCodes.map(qr => ( -->
+                        <div class="bg-gray-50 rounded-lg p-6 text-center border border-gray-200 hover:shadow-md transition-shadow">
+                            <div class="w-32 h-32 bg-white rounded-lg mx-auto mb-4 p-2 border border-gray-300">
+                                <!-- QR code placeholder - in production, this would be generated -->
+                                <div class="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 rounded grid grid-cols-8 gap-0.5 p-1">
+                                    <div class="bg-white rounded-sm"></div>
+                                    <div class="bg-gray-800 rounded-sm"></div>
+                                    <div class="bg-white rounded-sm"></div>
+                                    <div class="bg-gray-800 rounded-sm"></div>
+                                    <div class="bg-white rounded-sm"></div>
+                                    <div class="bg-gray-800 rounded-sm"></div>
+                                    <div class="bg-white rounded-sm"></div>
+                                    <div class="bg-gray-800 rounded-sm"></div>
+                                    <!-- More QR pattern elements would be here -->
+                                </div>
+                            </div>
+                            
+                            <h4 class="font-semibold text-gray-900 mb-2" data-bind="qr.table_number">Table 12</h4>
+                            <p class="text-sm text-gray-500 mb-2" data-bind="qr.location_name">Downtown Branch</p>
+                            
+                            <div class="space-y-2 mb-4">
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">Scans Today:</span>
+                                    <span class="font-medium" data-bind="qr.scans_today">23</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">Total Scans:</span>
+                                    <span class="font-medium" data-bind="qr.total_scans">156</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">Completion Rate:</span>
+                                    <span class="font-medium text-success-600" data-bind="qr.completion_rate">87%</span>
+                                </div>
+                            </div>
+                            
+                            <div class="flex space-x-2">
+                                <button class="flex-1 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                                    <i class="fas fa-download mr-1"></i>Download
+                                </button>
+                                <button class="flex-1 px-3 py-2 text-xs font-medium text-white bg-primary-500 border border-primary-500 rounded-md hover:bg-primary-600">
+                                    <i class="fas fa-chart-bar mr-1"></i>Analytics
+                                </button>
+                            </div>
+                        </div>
+                        <!-- @END_MAP )) -->
+
+                        <!-- Additional QR code cards would repeat here -->
+                        <div class="bg-gray-50 rounded-lg p-6 text-center border border-gray-200 hover:shadow-md transition-shadow">
+                            <div class="w-32 h-32 bg-white rounded-lg mx-auto mb-4 p-2 border border-gray-300">
+                                <div class="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 rounded grid grid-cols-8 gap-0.5 p-1">
+                                    <!-- QR pattern placeholder -->
+                                </div>
+                            </div>
+                            
+                            <h4 class="font-semibold text-gray-900 mb-2">Table 8</h4>
+                            <p class="text-sm text-gray-500 mb-2">Downtown Branch</p>
+                            
+                            <div class="space-y-2 mb-4">
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">Scans Today:</span>
+                                    <span class="font-medium">18</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">Total Scans:</span>
+                                    <span class="font-medium">142</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">Completion Rate:</span>
+                                    <span class="font-medium text-success-600">92%</span>
+                                </div>
+                            </div>
+                            
+                            <div class="flex space-x-2">
+                                <button class="flex-1 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                                    <i class="fas fa-download mr-1"></i>Download
+                                </button>
+                                <button class="flex-1 px-3 py-2 text-xs font-medium text-white bg-primary-500 border border-primary-500 rounded-md hover:bg-primary-600">
+                                    <i class="fas fa-chart-bar mr-1"></i>Analytics
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- @END_COMPONENT: QRCodeManagement -->
+        </div>
+    </div>
+
+    <!-- Modal for QR Code Generation -->
+    <div id="qr-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Generate New QR Code</h3>
+                <button onclick="closeModal('qr-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                        <select class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                            <option>Downtown Branch</option>
+                            <option>Uptown Branch</option>
+                            <option>Mall Location</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Table/Bed Number</label>
+                        <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" placeholder="e.g., Table 15">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Section (Optional)</label>
+                        <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" placeholder="e.g., Patio, VIP">
+                    </div>
+                </div>
+                
+                <div class="mt-6 flex space-x-3">
+                    <button type="button" onclick="closeModal('qr-modal')" class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                        Cancel
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600">
+                        Generate QR Code
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // View switching functionality
+        function showView(viewId) {
+            // Hide all views
+            document.querySelectorAll('.view-container').forEach(view => {
+                view.classList.add('hidden');
+            });
+            
+            // Show selected view
+            document.getElementById(viewId).classList.remove('hidden');
+            
+            // Update tab styling
+            document.querySelectorAll('button[onclick^="showView"]').forEach(btn => {
+                btn.className = 'px-4 py-3 text-sm font-medium text-gray-500 hover:text-gray-700';
+            });
+            
+            event.target.className = 'px-4 py-3 text-sm font-medium text-gray-900 border-b-2 border-primary-500 bg-primary-50';
+        }
+
+        // Star rating functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const stars = document.querySelectorAll('.star-rating');
+            
+            stars.forEach((star, index) => {
+                star.addEventListener('click', function() {
+                    const rating = this.getAttribute('data-rating');
+                    
+                    // Update star colors
+                    stars.forEach((s, i) => {
+                        if (i < rating) {
+                            s.classList.remove('text-gray-300');
+                            s.classList.add('text-yellow-400');
+                        } else {
+                            s.classList.remove('text-yellow-400');
+                            s.classList.add('text-gray-300');
+                        }
+                    });
+                });
+            });
+        });
+
+        // Chart initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('feedbackChart');
+            if (ctx) {
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                        datasets: [{
+                            label: 'Average Rating',
+                            data: [4.1, 4.3, 4.0, 4.5, 4.2, 4.8, 4.6],
+                            borderColor: '#3B82F6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            tension: 0.4
+                        }, {
+                            label: 'Response Count',
+                            data: [45, 52, 38, 67, 59, 73, 68],
+                            borderColor: '#10B981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            tension: 0.4,
+                            yAxisID: 'y1'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 5
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                beginAtZero: true,
+                                grid: {
+                                    drawOnChartArea: false,
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        // TODO: Implement voice recording functionality
+        function startVoiceRecording() {
+            // Implementation would use MediaRecorder API
+            console.log('Voice recording started');
+            alert('Voice recording feature would be implemented with MediaRecorder API');
+        }
+
+        // TODO: Implement camera functionality
+        function openCamera() {
+            // Implementation would use File API and camera access
+            console.log('Camera opened');
+            alert('Camera feature would be implemented with File API');
+        }
+
+        // Modal functionality
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+
+        // TODO: Implement business logic, API calls, and state management
+        function submitFeedback() {
+            console.log('Feedback submitted');
+            alert('Feedback would be submitted to backend API');
+        }
+
+        // Drag and drop functionality for survey builder (simplified)
+        document.addEventListener('DOMContentLoaded', function() {
+            const draggableFields = document.querySelectorAll('.draggable-field');
+            const canvas = document.getElementById('form-canvas');
+            
+            draggableFields.forEach(field => {
+                field.addEventListener('dragstart', function(e) {
+                    e.dataTransfer.setData('text/plain', this.getAttribute('data-field-type'));
+                });
+            });
+            
+            if (canvas) {
+                canvas.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                });
+                
+                canvas.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    const fieldType = e.dataTransfer.getData('text/plain');
+                    console.log('Dropped field type:', fieldType);
+                    // TODO: Implementation would create new form field
+                });
+            }
+        });
+    </script>
+</body>
+</html>

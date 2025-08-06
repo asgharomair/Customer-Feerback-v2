@@ -1,25 +1,34 @@
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Play, Pause, Square, Trash2 } from "lucide-react";
+import { Mic, MicOff, Play, Pause, Square, Trash2, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 interface VoiceRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
+  onUploadComplete?: (uploadUrl: string) => void;
   maxDuration?: number; // in seconds
+  autoUpload?: boolean;
+  tenantId?: string;
 }
 
 export default function VoiceRecorder({ 
   onRecordingComplete, 
-  maxDuration = 120 // 2 minutes default
+  onUploadComplete,
+  maxDuration = 120, // 2 minutes default
+  autoUpload = false,
+  tenantId
 }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -38,6 +47,142 @@ export default function VoiceRecorder({
     };
   }, [audioUrl]);
 
+  // Audio compression function
+  const compressAudio = async (blob: Blob): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const fileReader = new FileReader();
+      
+      fileReader.onload = async (e) => {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          
+          // Create offline context for processing
+          const offlineContext = new OfflineAudioContext(
+            1, // mono
+            audioBuffer.length,
+            22050 // 22kHz sample rate for compression
+          );
+          
+          const source = offlineContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(offlineContext.destination);
+          source.start();
+          
+          const renderedBuffer = await offlineContext.startRendering();
+          
+          // Convert back to blob
+          const wavBlob = audioBufferToWav(renderedBuffer);
+          resolve(wavBlob);
+        } catch (error) {
+          console.warn('Audio compression failed, using original:', error);
+          resolve(blob);
+        }
+      };
+      
+      fileReader.readAsArrayBuffer(blob);
+    });
+  };
+
+  // Convert AudioBuffer to WAV blob
+  const audioBufferToWav = (buffer: AudioBuffer): Blob => {
+    const length = buffer.length;
+    const numberOfChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const arrayBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2);
+    const view = new DataView(arrayBuffer);
+    
+    // WAV header
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length * numberOfChannels * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numberOfChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numberOfChannels * 2, true);
+    view.setUint16(32, numberOfChannels * 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, length * numberOfChannels * 2, true);
+    
+    // Write audio data
+    let offset = 44;
+    for (let i = 0; i < length; i++) {
+      for (let channel = 0; channel < numberOfChannels; channel++) {
+        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        offset += 2;
+      }
+    }
+    
+    return new Blob([arrayBuffer], { type: 'audio/wav' });
+  };
+
+  // Upload audio to backend
+  const uploadAudio = async (blob: Blob): Promise<string> => {
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+      
+      // Compress audio first
+      const compressedBlob = await compressAudio(blob);
+      
+      // Get upload URL from backend
+      const uploadResponse = await apiRequest('/api/objects/upload', {
+        method: 'POST',
+        body: JSON.stringify({
+          fileType: 'voice',
+          fileName: `voice_${Date.now()}.wav`,
+          fileSize: compressedBlob.size,
+          tenantId
+        }),
+      });
+
+      const { uploadURL } = uploadResponse;
+      
+      // Upload file with progress tracking
+      const xhr = new XMLHttpRequest();
+      
+      return new Promise((resolve, reject) => {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const progress = (e.loaded / e.total) * 100;
+            setUploadProgress(progress);
+          }
+        });
+        
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            const fileUrl = uploadURL.split('?')[0]; // Remove query parameters
+            resolve(fileUrl);
+          } else {
+            reject(new Error(`Upload failed: ${xhr.status}`));
+          }
+        });
+        
+        xhr.addEventListener('error', () => {
+          reject(new Error('Upload failed'));
+        });
+        
+        xhr.open('PUT', uploadURL);
+        xhr.setRequestHeader('Content-Type', 'audio/wav');
+        xhr.send(compressedBlob);
+      });
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -45,6 +190,7 @@ export default function VoiceRecorder({
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 44100,
+          channelCount: 1, // Mono for better compression
         }
       });
 
@@ -61,7 +207,7 @@ export default function VoiceRecorder({
         }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
         setAudioBlob(blob);
         
@@ -72,6 +218,25 @@ export default function VoiceRecorder({
         setAudioUrl(url);
         
         onRecordingComplete(blob);
+        
+        // Auto-upload if enabled
+        if (autoUpload && onUploadComplete) {
+          try {
+            const uploadUrl = await uploadAudio(blob);
+            onUploadComplete(uploadUrl);
+            toast({
+              title: "Voice uploaded",
+              description: "Voice recording has been uploaded successfully.",
+            });
+          } catch (error) {
+            console.error('Upload failed:', error);
+            toast({
+              title: "Upload failed",
+              description: "Failed to upload voice recording. Please try again.",
+              variant: "destructive",
+            });
+          }
+        }
         
         // Stop all audio tracks
         stream.getTracks().forEach(track => track.stop());
@@ -175,6 +340,26 @@ export default function VoiceRecorder({
     });
   };
 
+  const manualUpload = async () => {
+    if (!audioBlob || !onUploadComplete) return;
+    
+    try {
+      const uploadUrl = await uploadAudio(audioBlob);
+      onUploadComplete(uploadUrl);
+      toast({
+        title: "Voice uploaded",
+        description: "Voice recording has been uploaded successfully.",
+      });
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload voice recording. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -210,6 +395,12 @@ export default function VoiceRecorder({
                 <div className="text-lg font-mono text-gray-700">
                   Duration: {formatTime(recordingTime)}
                 </div>
+                {isUploading && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-500">Uploading...</div>
+                    <Progress value={uploadProgress} className="w-32 h-2" />
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-sm text-gray-500">
@@ -258,15 +449,29 @@ export default function VoiceRecorder({
                   size="lg"
                   variant="outline"
                   className="rounded-full w-12 h-12"
+                  disabled={isUploading}
                 >
                   {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
+                
+                {!autoUpload && onUploadComplete && (
+                  <Button
+                    onClick={manualUpload}
+                    size="lg"
+                    variant="outline"
+                    className="rounded-full w-12 h-12"
+                    disabled={isUploading}
+                  >
+                    {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                  </Button>
+                )}
                 
                 <Button
                   onClick={deleteRecording}
                   size="lg"
                   variant="outline"
                   className="rounded-full w-12 h-12 text-red-600 hover:text-red-700"
+                  disabled={isUploading}
                 >
                   <Trash2 className="w-5 h-5" />
                 </Button>
@@ -276,6 +481,7 @@ export default function VoiceRecorder({
                   size="lg"
                   variant="outline"
                   className="rounded-full w-12 h-12"
+                  disabled={isUploading}
                 >
                   <MicOff className="w-5 h-5" />
                 </Button>

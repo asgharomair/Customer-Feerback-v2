@@ -131,7 +131,7 @@ export class ObjectStorageService {
   }
 
   // Gets the upload URL for an object entity.
-  async getObjectEntityUploadURL(): Promise<string> {
+  async getObjectEntityUploadURL(filePath?: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -140,7 +140,7 @@ export class ObjectStorageService {
       );
     }
 
-    const objectId = randomUUID();
+    const objectId = filePath || randomUUID();
     const fullPath = `${privateObjectDir}/uploads/${objectId}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
@@ -152,6 +152,84 @@ export class ObjectStorageService {
       method: "PUT",
       ttlSec: 900,
     });
+  }
+
+  // Get signed download URL for a file
+  async getSignedDownloadURL(filePath: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const fullPath = `${privateObjectDir}/uploads/${filePath}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+
+    return signObjectURL({
+      bucketName,
+      objectName,
+      method: "GET",
+      ttlSec: 3600, // 1 hour
+    });
+  }
+
+  // Delete a file
+  async deleteFile(filePath: string): Promise<void> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const fullPath = `${privateObjectDir}/uploads/${filePath}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    const [exists] = await file.exists();
+    if (!exists) {
+      throw new ObjectNotFoundError();
+    }
+
+    await file.delete();
+  }
+
+  // Get file metadata
+  async getFileMetadata(filePath: string): Promise<any> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const fullPath = `${privateObjectDir}/uploads/${filePath}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    const [exists] = await file.exists();
+    if (!exists) {
+      throw new ObjectNotFoundError();
+    }
+
+    const [metadata] = await file.getMetadata();
+    return {
+      name: metadata.name,
+      size: metadata.size,
+      contentType: metadata.contentType,
+      timeCreated: metadata.timeCreated,
+      updated: metadata.updated,
+      md5Hash: metadata.md5Hash,
+    };
+  }
+
+  // List files for a tenant
+  async listTenantFiles(tenantId: string, fileType?: string): Promise<any[]> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const prefix = fileType 
+      ? `${privateObjectDir}/uploads/${fileType}/${tenantId}/`
+      : `${privateObjectDir}/uploads/${tenantId}/`;
+
+    const { bucketName } = parseObjectPath(prefix);
+    const bucket = objectStorageClient.bucket(bucketName);
+
+    const [files] = await bucket.getFiles({ prefix });
+    
+    return files.map(file => ({
+      name: file.name,
+      size: file.metadata.size,
+      contentType: file.metadata.contentType,
+      timeCreated: file.metadata.timeCreated,
+      updated: file.metadata.updated,
+    }));
   }
 
   // Gets the object entity file from the object path.

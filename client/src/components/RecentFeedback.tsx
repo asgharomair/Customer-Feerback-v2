@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MessageSquare, Star, Clock, MapPin, Play, Image as ImageIcon } from "lucide-react";
 import { useState } from "react";
+import AudioPlayer from "@/components/ui/AudioPlayer";
+import ImageGallery from "@/components/ui/ImageGallery";
 
 export default function RecentFeedback() {
   const [showDetails, setShowDetails] = useState<string | null>(null);
@@ -191,30 +193,28 @@ export default function RecentFeedback() {
                     </div>
                     
                     {/* Multimedia Content */}
-                    <div className="mt-4 space-y-3">
+                    <div className="mt-4 space-y-4">
                       {item.voiceRecordingUrl && (
                         <div>
                           <h5 className="font-medium text-sm mb-2">Voice Recording</h5>
-                          <audio controls className="w-full max-w-md">
-                            <source src={item.voiceRecordingUrl} type="audio/mpeg" />
-                            Your browser does not support the audio element.
-                          </audio>
+                          <AudioPlayer
+                            audioUrl={item.voiceRecordingUrl}
+                            fileName={`Voice feedback from ${item.customerName || 'Anonymous'}`}
+                            showDownload={true}
+                            className="max-w-md"
+                          />
                         </div>
                       )}
                       
                       {item.imageUrls && item.imageUrls.length > 0 && (
                         <div>
                           <h5 className="font-medium text-sm mb-2">Images</h5>
-                          <div className="flex gap-2 flex-wrap">
-                            {item.imageUrls.map((url, imgIndex) => (
-                              <img
-                                key={imgIndex}
-                                src={url}
-                                alt={`Feedback image ${imgIndex + 1}`}
-                                className="h-20 w-20 object-cover rounded border"
-                              />
-                            ))}
-                          </div>
+                          <ImageGallery
+                            images={item.imageUrls}
+                            imageNames={item.imageUrls.map((_, index) => `Feedback image ${index + 1}`)}
+                            showDownload={true}
+                            maxImages={4}
+                          />
                         </div>
                       )}
                     </div>

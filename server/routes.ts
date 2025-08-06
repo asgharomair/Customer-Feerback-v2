@@ -297,9 +297,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Object storage endpoints for voice and image uploads  
   app.post('/api/objects/upload', async (req, res) => {
     try {
+      const { fileType, fileName, fileSize, tenantId } = req.body;
+      
+      // Validate required fields
+      if (!fileType || !fileName || !tenantId) {
+        return res.status(400).json({ 
+          error: 'Missing required fields: fileType, fileName, tenantId' 
+        });
+      }
+
+      // Validate file type
+      const allowedTypes = ['voice', 'image'];
+      if (!allowedTypes.includes(fileType)) {
+        return res.status(400).json({ 
+          error: 'Invalid file type. Allowed types: voice, image' 
+        });
+      }
+
+      // Validate file size (10MB max for images, 50MB for voice)
+      const maxSize = fileType === 'image' ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+      if (fileSize && fileSize > maxSize) {
+        return res.status(400).json({ 
+          error: `File size exceeds maximum allowed size of ${maxSize / 1024 / 1024}MB` 
+        });
+      }
+
       const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadURL });
+      
+      // Generate unique file path with tenant isolation
+      const fileExtension = fileName.split('.').pop();
+      const uniqueFileName = `${fileType}/${tenantId}/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExtension}`;
+      
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL(uniqueFileName);
+      
+      res.json({ 
+        uploadURL,
+        filePath: uniqueFileName,
+        expiresIn: 900 // 15 minutes
+      });
     } catch (error) {
       console.error('Error getting upload URL:', error);
       res.status(500).json({ error: 'Failed to get upload URL' });
@@ -575,6 +610,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating feedback files:", error);
       res.status(500).json({ error: "Failed to update feedback files" });
+    }
+  });
+
+  // Get signed URL for file access
+  app.get("/api/objects/:filePath(*)/url", async (req, res) => {
+    try {
+      const { filePath } = req.params;
+      const { tenantId } = req.query;
+      
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenantId is required' });
+      }
+
+      // Validate tenant access to file
+      if (!filePath.includes(`/${tenantId}/`)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const objectStorageService = new ObjectStorageService();
+      const signedUrl = await objectStorageService.getSignedDownloadURL(filePath);
+      
+      res.json({ 
+        signedUrl,
+        expiresIn: 3600 // 1 hour
+      });
+    } catch (error) {
+      console.error('Error generating signed URL:', error);
+      res.status(500).json({ error: 'Failed to generate signed URL' });
+    }
+  });
+
+  // Delete file
+  app.delete("/api/objects/:filePath(*)", async (req, res) => {
+    try {
+      const { filePath } = req.params;
+      const { tenantId } = req.query;
+      
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenantId is required' });
+      }
+
+      // Validate tenant access to file
+      if (!filePath.includes(`/${tenantId}/`)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const objectStorageService = new ObjectStorageService();
+      await objectStorageService.deleteFile(filePath);
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      res.status(500).json({ error: 'Failed to delete file' });
+    }
+  });
+
+  // Get file metadata
+  app.get("/api/objects/:filePath(*)/metadata", async (req, res) => {
+    try {
+      const { filePath } = req.params;
+      const { tenantId } = req.query;
+      
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenantId is required' });
+      }
+
+      // Validate tenant access to file
+      if (!filePath.includes(`/${tenantId}/`)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const objectStorageService = new ObjectStorageService();
+      const metadata = await objectStorageService.getFileMetadata(filePath);
+      
+      res.json(metadata);
+    } catch (error) {
+      console.error('Error getting file metadata:', error);
+      res.status(500).json({ error: 'Failed to get file metadata' });
     }
   });
 
