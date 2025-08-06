@@ -1,52 +1,48 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
 import { insertFeedbackResponseSchema, insertQrCodeSchema, insertLocationSchema, insertSurveyTemplateSchema, insertAlertRuleSchema } from "@shared/schema";
 import QRCode from "qrcode";
 import { randomUUID } from "crypto";
+import { WebSocketService, NotificationEvent } from "./websocket";
+import { AlertRuleEngine } from "./alertRuleEngine";
+import { EmailService } from "./emailService";
+import { SMSService } from "./smsService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
-  // WebSocket server for real-time features
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // Initialize WebSocket service
+  const wsService = new WebSocketService(httpServer);
   
-  const clients = new Map<string, WebSocket>();
-
-  wss.on('connection', (ws: any, req) => {
-    const clientId = randomUUID();
-    clients.set(clientId, ws);
-
-    ws.on('message', (message: any) => {
-      try {
-        const data = JSON.parse(message.toString());
-        if (data.type === 'auth' && data.tenantId) {
-          // Associate client with tenant for targeted notifications
-          ws.tenantId = data.tenantId;
-        }
-      } catch (error) {
-        console.error('WebSocket message error:', error);
-      }
-    });
-
-    ws.on('close', () => {
-      clients.delete(clientId);
-    });
-  });
+  // Initialize Alert Rule Engine
+  const alertRuleEngine = new AlertRuleEngine();
+  
+  // Initialize Email Service
+  const emailService = new EmailService(
+    process.env.SENDGRID_API_KEY || '',
+    process.env.FROM_EMAIL || 'alerts@feedbackplatform.com',
+    process.env.FROM_NAME || 'Feedback Platform'
+  );
+  
+  // Initialize SMS Service
+  const smsService = new SMSService(
+    process.env.TWILIO_ACCOUNT_SID || '',
+    process.env.TWILIO_AUTH_TOKEN || '',
+    process.env.TWILIO_FROM_NUMBER || ''
+  );
 
   // Broadcast alert to all connected clients of a tenant
   function broadcastAlert(tenantId: string, alert: any) {
-    clients.forEach((client: any) => {
-      if (client.readyState === WebSocket.OPEN && client.tenantId === tenantId) {
-        client.send(JSON.stringify({
-          type: 'alert',
-          data: alert
-        }));
-      }
-    });
+    const event: NotificationEvent = {
+      type: 'alert',
+      tenantId,
+      data: alert,
+      severity: alert.severity || 'info'
+    };
+    wsService.broadcastToTenant(tenantId, event);
   }
 
   // Company onboarding endpoint
@@ -346,19 +342,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertFeedbackResponseSchema.parse(req.body);
       const feedback = await storage.createFeedbackResponse(validatedData);
 
-      // Check for alert conditions and trigger if necessary
-      if (feedback.overallRating <= 2) {
-        const alert = await storage.createAlertNotification({
-          tenantId: feedback.tenantId,
-          alertRuleId: '', // In production, this would reference actual alert rules
-          feedbackId: feedback.id,
-          title: 'Low Rating Alert',
-          message: `Customer gave a rating of ${feedback.overallRating}/5 for ${feedback.qrCodeId ? 'QR location' : 'general feedback'}`,
-          severity: 'critical'
-        });
+      // Broadcast real-time feedback event
+      const feedbackEvent: NotificationEvent = {
+        type: 'feedback',
+        tenantId: feedback.tenantId,
+        data: {
+          id: feedback.id,
+          customerName: feedback.customerName,
+          overallRating: feedback.overallRating,
+          feedbackText: feedback.feedbackText,
+          createdAt: feedback.createdAt,
+          hasVoiceRecording: !!feedback.voiceRecordingUrl,
+          hasImages: feedback.imageUrls && feedback.imageUrls.length > 0
+        },
+        severity: feedback.overallRating <= 2 ? 'critical' : feedback.overallRating <= 3 ? 'warning' : 'info'
+      };
+      wsService.broadcastToTenant(feedback.tenantId, feedbackEvent);
 
-        // Broadcast real-time alert
-        broadcastAlert(feedback.tenantId, alert);
+      // Evaluate feedback against alert rules
+      const alertResults = await alertRuleEngine.evaluateFeedback(feedback, feedback.tenantId);
+      
+      // Create alerts for triggered rules
+      for (const result of alertResults) {
+        if (result.triggered) {
+          const alert = await storage.createAlertNotification({
+            tenantId: feedback.tenantId,
+            alertRuleId: result.data.ruleId,
+            feedbackId: feedback.id,
+            title: result.data.ruleName,
+            message: result.message,
+            severity: result.severity
+          });
+
+          // Broadcast real-time alert
+          broadcastAlert(feedback.tenantId, alert);
+        }
       }
 
       res.json(feedback);
@@ -698,39 +716,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       for (const action of actions) {
         if (action.type === 'email' && action.recipients) {
-          // Send email notifications using SendGrid
-          const { MailService } = await import('@sendgrid/mail');
-          
-          if (process.env.SENDGRID_API_KEY) {
-            const mailService = new MailService();
-            mailService.setApiKey(process.env.SENDGRID_API_KEY);
+          try {
+            // Determine template based on alert type
+            let templateId = 'low-rating-alert';
+            if (alert.severity === 'warning') {
+              templateId = 'keyword-alert';
+            }
             
-            const emailContent = {
-              to: action.recipients,
-              from: action.fromEmail || 'alerts@feedbackplatform.com',
-              subject: `${alert.severity.toUpperCase()}: ${alert.title}`,
-              html: `
-                <h2>${alert.title}</h2>
-                <p><strong>Severity:</strong> ${alert.severity}</p>
-                <p><strong>Message:</strong> ${alert.message}</p>
-                <p><strong>Customer Rating:</strong> ${feedback.overallRating}/5</p>
-                <p><strong>Customer Name:</strong> ${feedback.customerName || 'Anonymous'}</p>
-                <p><strong>Feedback:</strong> ${feedback.feedbackText || 'No additional comments'}</p>
-                <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-                <hr>
-                <p><em>This is an automated alert from your Feedback Management System.</em></p>
-              `
+            // Prepare template data
+            const templateData = {
+              ruleName: alert.title,
+              rating: feedback.overallRating,
+              customerName: feedback.customerName || 'Anonymous',
+              timestamp: new Date().toLocaleString(),
+              feedbackText: feedback.feedbackText || 'No additional comments',
+              severity: alert.severity,
+              locationName: 'Main Location', // This would come from location data
+              dashboardUrl: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/dashboard`,
+              unsubscribeUrl: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/unsubscribe`
             };
             
-            await mailService.send(emailContent);
+            // Send email using template
+            await emailService.sendTemplateEmail(
+              templateId,
+              action.recipients,
+              templateData,
+              {
+                from: action.fromEmail || process.env.FROM_EMAIL || 'alerts@feedbackplatform.com'
+              },
+              alert.severity === 'critical' ? 'urgent' : 'normal'
+            );
+            
             console.log('Email alert sent successfully');
+          } catch (emailError) {
+            console.error('Email alert failed:', emailError);
           }
         }
         
         if (action.type === 'sms' && action.phoneNumbers) {
-          // SMS notifications would be implemented here with Twilio or similar service
-          console.log('SMS alert would be sent to:', action.phoneNumbers);
-          console.log('SMS content:', `ALERT: ${alert.title} - Rating: ${feedback.overallRating}/5`);
+          try {
+            // Determine SMS template based on alert type
+            let templateId = 'critical-alert';
+            if (alert.severity === 'warning') {
+              templateId = 'warning-alert';
+            }
+            
+            // Prepare template data
+            const templateData = {
+              ruleName: alert.title,
+              rating: feedback.overallRating,
+              customerName: feedback.customerName || 'Anonymous',
+              message: alert.message,
+              dashboardUrl: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/dashboard`
+            };
+            
+            // Send SMS to each phone number
+            for (const phoneNumber of action.phoneNumbers) {
+              // Check if number is opted in
+              if (smsService.isOptedIn(phoneNumber)) {
+                await smsService.sendTemplateSMS(
+                  templateId,
+                  phoneNumber,
+                  templateData,
+                  {
+                    priority: alert.severity === 'critical' ? 'urgent' : 'normal'
+                  }
+                );
+              } else {
+                console.log(`SMS not sent to ${phoneNumber} - not opted in`);
+              }
+            }
+            
+            console.log('SMS alerts sent successfully');
+          } catch (smsError) {
+            console.error('SMS alert failed:', smsError);
+          }
         }
         
         if (action.type === 'webhook' && action.url) {
@@ -757,6 +817,366 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error sending alert notifications:', error);
     }
   }
+
+  // WebSocket stats endpoint
+  app.get('/api/websocket/stats', (req, res) => {
+    try {
+      const stats = wsService.getStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error getting WebSocket stats:', error);
+      res.status(500).json({ error: 'Failed to get WebSocket stats' });
+    }
+  });
+
+  // Alert Rule Engine stats endpoint
+  app.get('/api/alerts/engine/stats', (req, res) => {
+    try {
+      const stats = alertRuleEngine.getStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error getting Alert Rule Engine stats:', error);
+      res.status(500).json({ error: 'Failed to get Alert Rule Engine stats' });
+    }
+  });
+
+  // Get alert rules for a tenant
+  app.get('/api/alerts/rules/:tenantId', async (req, res) => {
+    try {
+      const rules = await storage.getAlertRulesByTenant(req.params.tenantId);
+      res.json(rules);
+    } catch (error) {
+      console.error('Error fetching alert rules:', error);
+      res.status(500).json({ error: 'Failed to fetch alert rules' });
+    }
+  });
+
+  // Create alert rule
+  app.post('/api/alerts/rules', async (req, res) => {
+    try {
+      const validatedData = insertAlertRuleSchema.parse(req.body);
+      const rule = await storage.createAlertRule(validatedData);
+      
+      // Add rule to the engine
+      alertRuleEngine.addRule({
+        id: rule.id,
+        name: rule.name,
+        description: rule.description || undefined,
+        tenantId: rule.tenantId,
+        conditions: rule.conditions as any,
+        actions: rule.actions as any,
+        isActive: rule.isActive,
+        priority: 'medium',
+        cooldownPeriod: 30
+      });
+      
+      res.json(rule);
+    } catch (error) {
+      console.error('Error creating alert rule:', error);
+      res.status(500).json({ error: 'Failed to create alert rule' });
+    }
+  });
+
+  // Update alert rule
+  app.put('/api/alerts/rules/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validatedData = insertAlertRuleSchema.partial().parse(req.body);
+      const rule = await storage.updateAlertRule(id, validatedData);
+      
+      // Update rule in the engine
+      alertRuleEngine.addRule({
+        id: rule.id,
+        name: rule.name,
+        description: rule.description || undefined,
+        tenantId: rule.tenantId,
+        conditions: rule.conditions as any,
+        actions: rule.actions as any,
+        isActive: rule.isActive,
+        priority: 'medium',
+        cooldownPeriod: 30
+      });
+      
+      res.json(rule);
+    } catch (error) {
+      console.error('Error updating alert rule:', error);
+      res.status(500).json({ error: 'Failed to update alert rule' });
+    }
+  });
+
+  // Delete alert rule
+  app.delete('/api/alerts/rules/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteAlertRule(id);
+      
+      // Remove rule from the engine
+      alertRuleEngine.removeRule(id);
+      
+      res.json({ message: 'Alert rule deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting alert rule:', error);
+      res.status(500).json({ error: 'Failed to delete alert rule' });
+    }
+  });
+
+  // Test alert rule
+  app.post('/api/alerts/rules/:id/test', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const testFeedback = req.body.feedback;
+      
+      // Get the rule
+      const rule = await storage.getAlertRule(id);
+      if (!rule) {
+        return res.status(404).json({ error: 'Alert rule not found' });
+      }
+      
+      // Test the rule against the provided feedback
+      const results = await alertRuleEngine.evaluateFeedback(testFeedback, rule.tenantId);
+      const ruleResult = results.find(r => r.data.ruleId === id);
+      
+      res.json({
+        triggered: ruleResult?.triggered || false,
+        message: ruleResult?.message || 'Rule did not trigger',
+        severity: ruleResult?.severity || 'info'
+      });
+    } catch (error) {
+      console.error('Error testing alert rule:', error);
+      res.status(500).json({ error: 'Failed to test alert rule' });
+    }
+  });
+
+  // Email service endpoints
+  app.get('/api/email/stats', (req, res) => {
+    try {
+      const stats = emailService.getStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error getting email stats:', error);
+      res.status(500).json({ error: 'Failed to get email stats' });
+    }
+  });
+
+  app.get('/api/email/templates', (req, res) => {
+    try {
+      const templates = emailService.getAllTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error('Error getting email templates:', error);
+      res.status(500).json({ error: 'Failed to get email templates' });
+    }
+  });
+
+  app.post('/api/email/send', async (req, res) => {
+    try {
+      const { to, subject, html, text, templateId, templateData } = req.body;
+      
+      if (templateId) {
+        const deliveryStatus = await emailService.sendTemplateEmail(templateId, to, templateData || {});
+        res.json(deliveryStatus);
+      } else {
+        const deliveryStatus = await emailService.sendEmail({
+          to,
+          subject,
+          html,
+          text
+        });
+        res.json(deliveryStatus);
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      res.status(500).json({ error: 'Failed to send email' });
+    }
+  });
+
+  app.post('/api/email/queue', (req, res) => {
+    try {
+      const { to, subject, html, text, templateId, templateData, priority, delayMinutes } = req.body;
+      
+      let emailId: string;
+      if (templateId) {
+        emailId = emailService.queueTemplateEmail(templateId, to, templateData || {}, {}, priority || 'normal', delayMinutes || 0);
+      } else {
+        emailId = emailService.queueEmail({
+          to,
+          subject,
+          html,
+          text
+        }, priority || 'normal', delayMinutes || 0);
+      }
+      
+      res.json({ emailId, message: 'Email queued successfully' });
+    } catch (error) {
+      console.error('Error queuing email:', error);
+      res.status(500).json({ error: 'Failed to queue email' });
+    }
+  });
+
+  app.delete('/api/email/queue/:emailId', (req, res) => {
+    try {
+      const { emailId } = req.params;
+      const cancelled = emailService.cancelEmail(emailId);
+      
+      if (cancelled) {
+        res.json({ message: 'Email cancelled successfully' });
+      } else {
+        res.status(404).json({ error: 'Email not found or already processed' });
+      }
+    } catch (error) {
+      console.error('Error cancelling email:', error);
+      res.status(500).json({ error: 'Failed to cancel email' });
+    }
+  });
+
+  // SMS service endpoints
+  app.get('/api/sms/stats', (req, res) => {
+    try {
+      const stats = smsService.getStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error getting SMS stats:', error);
+      res.status(500).json({ error: 'Failed to get SMS stats' });
+    }
+  });
+
+  app.get('/api/sms/templates', (req, res) => {
+    try {
+      const templates = smsService.getAllTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error('Error getting SMS templates:', error);
+      res.status(500).json({ error: 'Failed to get SMS templates' });
+    }
+  });
+
+  app.post('/api/sms/send', async (req, res) => {
+    try {
+      const { to, message, templateId, templateData } = req.body;
+      
+      if (templateId) {
+        const deliveryStatus = await smsService.sendTemplateSMS(templateId, to, templateData || {});
+        res.json(deliveryStatus);
+      } else {
+        const deliveryStatus = await smsService.sendSMS({
+          to,
+          message
+        });
+        res.json(deliveryStatus);
+      }
+    } catch (error) {
+      console.error('Error sending SMS:', error);
+      res.status(500).json({ error: 'Failed to send SMS' });
+    }
+  });
+
+  app.post('/api/sms/queue', (req, res) => {
+    try {
+      const { to, message, templateId, templateData, priority, delayMinutes } = req.body;
+      
+      let smsId: string;
+      if (templateId) {
+        smsId = smsService.queueTemplateSMS(templateId, to, templateData || {}, {}, delayMinutes || 0);
+      } else {
+        smsId = smsService.queueSMS({
+          to,
+          message,
+          priority: priority || 'normal'
+        }, delayMinutes || 0);
+      }
+      
+      res.json({ smsId, message: 'SMS queued successfully' });
+    } catch (error) {
+      console.error('Error queuing SMS:', error);
+      res.status(500).json({ error: 'Failed to queue SMS' });
+    }
+  });
+
+  app.delete('/api/sms/queue/:smsId', (req, res) => {
+    try {
+      const { smsId } = req.params;
+      const cancelled = smsService.cancelSMS(smsId);
+      
+      if (cancelled) {
+        res.json({ message: 'SMS cancelled successfully' });
+      } else {
+        res.status(404).json({ error: 'SMS not found or already processed' });
+      }
+    } catch (error) {
+      console.error('Error cancelling SMS:', error);
+      res.status(500).json({ error: 'Failed to cancel SMS' });
+    }
+  });
+
+  // SMS opt-in/opt-out endpoints
+  app.post('/api/sms/opt-in', (req, res) => {
+    try {
+      const { phoneNumber, tenantId, source } = req.body;
+      smsService.optIn(phoneNumber, tenantId, source || 'api');
+      res.json({ message: 'Successfully opted in to SMS alerts' });
+    } catch (error) {
+      console.error('Error opting in to SMS:', error);
+      res.status(500).json({ error: 'Failed to opt in to SMS' });
+    }
+  });
+
+  app.post('/api/sms/opt-out', (req, res) => {
+    try {
+      const { phoneNumber, tenantId, reason } = req.body;
+      smsService.optOut(phoneNumber, tenantId, reason);
+      res.json({ message: 'Successfully opted out of SMS alerts' });
+    } catch (error) {
+      console.error('Error opting out of SMS:', error);
+      res.status(500).json({ error: 'Failed to opt out of SMS' });
+    }
+  });
+
+  app.get('/api/sms/opt-status/:phoneNumber', (req, res) => {
+    try {
+      const { phoneNumber } = req.params;
+      const isOptedIn = smsService.isOptedIn(phoneNumber);
+      const isOptedOut = smsService.isOptedOut(phoneNumber);
+      
+      res.json({
+        phoneNumber,
+        isOptedIn,
+        isOptedOut,
+        status: isOptedIn ? 'opted-in' : isOptedOut ? 'opted-out' : 'not-registered'
+      });
+    } catch (error) {
+      console.error('Error checking SMS opt status:', error);
+      res.status(500).json({ error: 'Failed to check SMS opt status' });
+    }
+  });
+
+  // Twilio webhook for incoming SMS (opt-in/opt-out)
+  app.post('/api/sms/webhook', (req, res) => {
+    try {
+      const { From, Body, To } = req.body;
+      const tenantId = req.query.tenantId as string;
+      
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenantId is required' });
+      }
+      
+      const result = smsService.handleIncomingSMS(From, Body, tenantId);
+      
+      // Send response SMS if needed
+      if (result.response) {
+        // In a real implementation, you would send the response SMS here
+        console.log('Would send response SMS:', result.response);
+      }
+      
+      res.json({ 
+        success: true, 
+        action: result.action,
+        response: result.response 
+      });
+    } catch (error) {
+      console.error('Error handling SMS webhook:', error);
+      res.status(500).json({ error: 'Failed to handle SMS webhook' });
+    }
+  });
 
   return httpServer;
 }

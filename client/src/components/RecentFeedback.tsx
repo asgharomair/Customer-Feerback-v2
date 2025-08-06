@@ -3,19 +3,48 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MessageSquare, Star, Clock, MapPin, Play, Image as ImageIcon } from "lucide-react";
-import { useState } from "react";
+import { MessageSquare, Star, Clock, MapPin, Play, Image as ImageIcon, Wifi } from "lucide-react";
+import { useState, useEffect } from "react";
 import AudioPlayer from "@/components/ui/AudioPlayer";
 import ImageGallery from "@/components/ui/ImageGallery";
 
-export default function RecentFeedback() {
+interface RecentFeedbackProps {
+  realTimeUpdates?: boolean;
+}
+
+export default function RecentFeedback({ realTimeUpdates = false }: RecentFeedbackProps) {
   const [showDetails, setShowDetails] = useState<string | null>(null);
+  const [newFeedbackIds, setNewFeedbackIds] = useState<Set<string>>(new Set());
   const tenantId = "a550e8e0-d5e7-4f82-8b9a-123456789012"; // This would come from auth context
 
-  const { data: feedback, isLoading } = useQuery({
+  const { data: feedback, isLoading, refetch } = useQuery({
     queryKey: ['/api/feedback', tenantId, { limit: 20 }],
     retry: false,
+    refetchInterval: realTimeUpdates ? 10000 : false, // Refetch every 10 seconds if real-time is enabled
   });
+
+  // Mark new feedback items as "new" for a few seconds
+  useEffect(() => {
+    if (feedback && Array.isArray(feedback)) {
+      const currentIds = new Set(feedback.map((item: any) => item.id));
+      
+      // Add new IDs to the set
+      currentIds.forEach(id => {
+        if (!newFeedbackIds.has(id)) {
+          setNewFeedbackIds(prev => new Set([...prev, id]));
+          
+          // Remove the "new" indicator after 5 seconds
+          setTimeout(() => {
+            setNewFeedbackIds(prev => {
+              const updated = new Set(prev);
+              updated.delete(id);
+              return updated;
+            });
+          }, 5000);
+        }
+      });
+    }
+  }, [feedback]);
 
   if (isLoading) {
     return (
@@ -77,6 +106,12 @@ export default function RecentFeedback() {
         <CardTitle className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5 text-blue-600" />
           Recent Feedback
+          {realTimeUpdates && (
+            <div className="flex items-center gap-1">
+              <Wifi className="h-3 w-3 text-green-500" />
+              <Badge variant="outline" className="text-xs">Live</Badge>
+            </div>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -88,163 +123,116 @@ export default function RecentFeedback() {
           </div>
         ) : (
           <div className="space-y-4">
-            {feedback.map((item: any, index: number) => (
-              <div
-                key={item.id}
-                className="border rounded-lg p-4 transition-all hover:shadow-md cursor-pointer"
-                onClick={() => setShowDetails(showDetails === item.id ? null : item.id)}
-                data-testid={`feedback-${index}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>
-                        {item.customerName?.charAt(0)?.toUpperCase() || 'A'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium text-gray-900">
-                          {item.customerName || 'Anonymous Customer'}
-                        </h4>
-                        <Badge variant={getRatingBadge(item.overallRating)}>
-                          <Star className="h-3 w-3 mr-1" />
-                          {item.overallRating}/5
-                        </Badge>
-                      </div>
-                      
-                      {item.feedbackText && (
-                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                          {item.feedbackText}
-                        </p>
-                      )}
-                      
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          <span>{formatTimeAgo(item.createdAt)}</span>
-                        </div>
-                        {item.qrCodeId && (
-                          <div className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            <span>QR Code</span>
-                          </div>
-                        )}
-                        {item.voiceRecordingUrl && (
-                          <div className="flex items-center gap-1">
-                            <Play className="h-3 w-3" />
-                            <span>Voice</span>
-                          </div>
-                        )}
-                        {item.imageUrls && item.imageUrls.length > 0 && (
-                          <div className="flex items-center gap-1">
-                            <ImageIcon className="h-3 w-3" />
-                            <span>{item.imageUrls.length} image(s)</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <div className={`flex items-center space-x-1 ${getRatingColor(item.overallRating)}`}>
-                      {[...Array(5)].map((_, i) => (
-                        <Star
-                          key={i}
-                          className={`h-4 w-4 ${
-                            i < item.overallRating ? 'fill-current' : 'text-gray-300'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Expanded Details */}
-                {showDetails === item.id && (
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <h5 className="font-medium text-sm mb-2">Contact Information</h5>
-                        <div className="space-y-1 text-sm text-gray-600">
-                          {item.customerEmail && (
-                            <p>Email: {item.customerEmail}</p>
-                          )}
-                          {item.customerPhone && (
-                            <p>Phone: {item.customerPhone}</p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <h5 className="font-medium text-sm mb-2">Feedback Details</h5>
-                        <div className="space-y-1 text-sm text-gray-600">
-                          <p>Rating: {item.overallRating}/5</p>
-                          {item.responseTime && (
-                            <p>Response Time: {item.responseTime}s</p>
-                          )}
-                          {item.sentiment && (
-                            <Badge variant="outline" className="text-xs">
-                              {item.sentiment}
+            {feedback.map((item: any, index: number) => {
+              const isNew = newFeedbackIds.has(item.id);
+              return (
+                <div
+                  key={item.id}
+                  className={`border rounded-lg p-4 transition-all hover:shadow-md cursor-pointer ${
+                    isNew ? 'bg-blue-50 border-blue-200 animate-pulse' : ''
+                  }`}
+                  onClick={() => setShowDetails(showDetails === item.id ? null : item.id)}
+                  data-testid={`feedback-${index}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3 flex-1">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${item.customerName}`} />
+                        <AvatarFallback>{item.customerName?.charAt(0) || 'C'}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-medium text-gray-900 truncate">
+                            {item.customerName || 'Anonymous'}
+                          </h3>
+                          {isNew && (
+                            <Badge variant="default" className="text-xs animate-bounce">
+                              NEW
                             </Badge>
                           )}
                         </div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="flex items-center">
+                            <Star className={`h-4 w-4 ${getRatingColor(item.overallRating)} mr-1`} />
+                            <span className="font-medium">{item.overallRating}/5</span>
+                          </div>
+                          <Badge variant={getRatingBadge(item.overallRating)} className="text-xs">
+                            {item.overallRating >= 4 ? 'Excellent' : item.overallRating >= 3 ? 'Good' : 'Needs Improvement'}
+                          </Badge>
+                          <div className="flex items-center text-gray-500 text-sm">
+                            <Clock className="h-3 w-3 mr-1" />
+                            {formatTimeAgo(item.createdAt)}
+                          </div>
+                        </div>
+                        {item.feedbackText && (
+                          <p className="text-gray-600 text-sm line-clamp-2">
+                            {item.feedbackText}
+                          </p>
+                        )}
+                        
+                        {/* Multimedia indicators */}
+                        <div className="flex items-center gap-2 mt-2">
+                          {item.voiceRecordingUrl && (
+                            <div className="flex items-center gap-1 text-blue-600 text-xs">
+                              <Play className="h-3 w-3" />
+                              <span>Voice</span>
+                            </div>
+                          )}
+                          {item.imageUrls && item.imageUrls.length > 0 && (
+                            <div className="flex items-center gap-1 text-green-600 text-xs">
+                              <ImageIcon className="h-3 w-3" />
+                              <span>{item.imageUrls.length} image{item.imageUrls.length > 1 ? 's' : ''}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    
-                    {/* Multimedia Content */}
-                    <div className="mt-4 space-y-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      {showDetails === item.id ? 'Hide' : 'View'}
+                    </Button>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {showDetails === item.id && (
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+                      {item.feedbackText && (
+                        <div>
+                          <h4 className="font-medium text-gray-900 mb-2">Full Feedback</h4>
+                          <p className="text-gray-700">{item.feedbackText}</p>
+                        </div>
+                      )}
+                      
                       {item.voiceRecordingUrl && (
                         <div>
-                          <h5 className="font-medium text-sm mb-2">Voice Recording</h5>
-                          <AudioPlayer
-                            audioUrl={item.voiceRecordingUrl}
-                            fileName={`Voice feedback from ${item.customerName || 'Anonymous'}`}
-                            showDownload={true}
-                            className="max-w-md"
-                          />
+                          <h4 className="font-medium text-gray-900 mb-2">Voice Recording</h4>
+                          <AudioPlayer audioUrl={item.voiceRecordingUrl} />
                         </div>
                       )}
                       
                       {item.imageUrls && item.imageUrls.length > 0 && (
                         <div>
-                          <h5 className="font-medium text-sm mb-2">Images</h5>
-                          <ImageGallery
-                            images={item.imageUrls}
-                            imageNames={item.imageUrls.map((_, index) => `Feedback image ${index + 1}`)}
-                            showDownload={true}
-                            maxImages={4}
-                          />
+                          <h4 className="font-medium text-gray-900 mb-2">Images</h4>
+                          <ImageGallery images={item.imageUrls} />
                         </div>
                       )}
-                    </div>
-                    
-                    {/* Custom Fields */}
-                    {item.customFields && Object.keys(item.customFields).length > 0 && (
-                      <div className="mt-4">
-                        <h5 className="font-medium text-sm mb-2">Additional Responses</h5>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {Object.entries(item.customFields).map(([key, value]) => (
-                            <div key={key} className="text-sm">
-                              <span className="font-medium text-gray-700">{key}:</span>
-                              <span className="ml-2 text-gray-600">{String(value)}</span>
-                            </div>
-                          ))}
+                      
+                      <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                        <div>
+                          <span className="font-medium">Location:</span> {item.locationName || 'Unknown'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Submitted:</span> {new Date(item.createdAt).toLocaleString()}
                         </div>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        
-        {feedback && feedback.length > 0 && (
-          <div className="mt-6 text-center">
-            <Button variant="outline" size="sm" data-testid="button-view-all-feedback">
-              View All Feedback
-            </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
